@@ -24,11 +24,13 @@ def analysis(closes):
                 trend="Bullish" if s5 >= s20 else "Bearish", tech=max(0, min(100, score)))
 
 def step(c, upd, cap=0.06, factor=1.0):
-    """One official market update: processes multi-industry news cascades across 2-3 sectors to reduce prediction bias."""
+    """One official market update: guarantees price updates and handles multi-industry news cascades (2-3 for surprise, 1-2 for manual)."""
     rnd = random.Random(1000 + upd)
     cos = c.execute("SELECT * FROM companies").fetchall()
+    
+    # Fetch all released news active in this update window
     news = c.execute("SELECT * FROM news WHERE released=1 AND ? - released_upd < duration", (upd,)).fetchall()
-    if any(n["kind"] == "mega" for n in news): cap = max(cap, 0.15)
+    if any(n.get("kind") == "mega" for n in news): cap = max(cap, 0.15)
     
     mkt = rnd.gauss(0, 0.008)
     key = lambda x: x["symbol"] if x["industry"] == "Commodity-Linked" else x["industry"]
@@ -45,23 +47,40 @@ def step(c, upd, cap=0.06, factor=1.0):
             if co["symbol"] in sn:
                 return sn[co["symbol"]]
             
-            # Multi-industry cascade rule (affects 2-3 secondary/related industries)
-            n_industries = [i.strip() for i in n.get("industry", "").split(",")] if "industry" in n.keys() and n["industry"] else [n.get("industry", "")]
+            # Multi-industry cascade parsing supporting comma-separated industries (1-2 for manual, 2-3 for surprise)
+            raw_ind = n.get("industry", "")
+            n_industries = [i.strip() for i in raw_ind.split(",") if i.strip()]
+            
             if co["industry"] in n_industries:
-                # Primary industry gets stronger impact, secondary/spillover industries get partial weight
-                return 1.2 if co["industry"] == n_industries[0] else 0.65
-            return 0.35 # Mild baseline spillover
-                    
-        imp = sum(n["direction"] * n["impact"] / 100 * mult(n) for n in news if co["symbol"] in n["symbols"].split(",") or any(ind_name in co["industry"] for ind_name in n.get("industry", "").split(",")))
-        
-        # Balanced fundamental drift to prevent banking sector runaway compounding
+                # Primary industry gets full impact, secondary industries get spillover weight
+                return 1.2 if co["industry"] == n_industries[0] else 0.7
+            return 0.35 # Baseline market spillover
+            
+        # Compute total impact from all active manual and surprise news affecting this company/industry
+        imp = 0.0
+        for n in news:
+            symbols = [s.strip() for s in n.get("symbols", "").split(",") if s.strip()]
+            raw_ind = n.get("industry", "")
+            n_industries = [i.strip() for i in raw_ind.split(",") if i.strip()]
+            
+            matches_symbol = co["symbol"] in symbols
+            matches_industry = co["industry"] in n_industries
+            
+            if matches_symbol or matches_industry:
+                direction = float(n.get("direction", 1))
+                impact_val = float(n.get("impact", 0.0))
+                imp += direction * impact_val / 100.0 * mult(n)
+                
+        # Fundamental drift to keep companies moving
         drift = (co["fund"] - 50) / 100 * 0.0005
         
-        r = co["beta"] * mkt + ind[key(co)] + drift + mom + imp + rnd.gauss(0, 0.006 * co["vol"])
+        # Ensure minimum volatility so prices never freeze completely
+        noise = rnd.gauss(0, 0.006 * max(0.5, co["vol"]))
+        r = co["beta"] * mkt + ind[key(co)] + drift + mom + imp + noise
         r = max(-cap * factor, min(cap * factor, r * factor))
         
         o = co["price"]
-        cl = round(max(1, o * (1 + r)), 2)
+        cl = round(max(1.0, o * (1 + r)), 2)
         hi = round(max(o, cl) * (1 + abs(rnd.gauss(0, 0.003))), 2)
         lo = round(min(o, cl) * (1 - abs(rnd.gauss(0, 0.003))), 2)
         
