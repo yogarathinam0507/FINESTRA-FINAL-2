@@ -15,7 +15,9 @@ def score(c, tid):
     cap = p["cap"]
     v = max(p["value"], 1)
     
-    # 1. Relative Grading for Returns: Scale points relative to peer group performance
+    # 1. Robust Relative Grading for Returns: 
+    # Fetches all active team returns. Even if returns are negative (-12%, -14%), 
+    # they are scaled relative to the group so the best gets closer to 50 and worst gets a fair floor (>0).
     all_teams = c.execute("SELECT id FROM teams WHERE status='approved'").fetchall()
     all_rets = []
     for team_row in all_teams:
@@ -31,14 +33,16 @@ def score(c, tid):
     if max_ret == min_ret:
         ret = 25.0
     else:
+        # Relative scaling formula ensuring minimum return doesn't completely flatline to 0 unless absolute bottom
         normalized_ret = (p["ret"] - min_ret) / (max_ret - min_ret)
-        ret = max(0.0, min(50.0, normalized_ret * 50.0))
+        # Give a small buffer (e.g. min 5 points) so negative returns don't strictly hit 0 points
+        ret = round(max(5.0, min(50.0, normalized_ret * 45.0 + 5.0)), 2)
     
     # 2. Cash Management Score: Target 10% to 40% cash buffer (optimal 25%)
     cr = t["cash"] / v
     cash = 10 if 0.1 <= cr <= 0.4 else max(0, 10 - abs(cr - 0.25) * 20)
     
-    # 3. Discipline Score: Fixed sqlite3.Row attribute lookup
+    # 3. Discipline Score: Safe sqlite3.Row lookup
     trade_count = t["trades"] if "trades" in t.keys() else 0
     if trade_count > 0:
         brokerage_ratio = (t["brokerage"] if "brokerage" in t.keys() else 0.0) / cap * 100
