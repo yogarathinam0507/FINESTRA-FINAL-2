@@ -24,7 +24,7 @@ def analysis(closes):
                 trend="Bullish" if s5 >= s20 else "Bearish", tech=max(0, min(100, score)))
 
 def step(c, upd, cap=0.06, factor=1.0):
-    """One official market update: generates a price + OHLC candle for all 20 stocks with balanced sector drift."""
+    """One official market update: processes multi-industry news cascades across 2-3 sectors to reduce prediction bias."""
     rnd = random.Random(1000 + upd)
     cos = c.execute("SELECT * FROM companies").fetchall()
     news = c.execute("SELECT * FROM news WHERE released=1 AND ? - released_upd < duration", (upd,)).fetchall()
@@ -42,11 +42,19 @@ def step(c, upd, cap=0.06, factor=1.0):
         
         def mult(n):
             sn = json.loads(n["sens"]) if n["sens"] else {}
-            return sn[co["symbol"]] if co["symbol"] in sn else (1.2 if co["industry"] == n["industry"] else 0.6)
+            if co["symbol"] in sn:
+                return sn[co["symbol"]]
             
-        imp = sum(n["direction"] * n["impact"] / 100 * mult(n) for n in news if co["symbol"] in n["symbols"].split(","))
+            # Multi-industry cascade rule (affects 2-3 secondary/related industries)
+            n_industries = [i.strip() for i in n.get("industry", "").split(",")] if "industry" in n.keys() and n["industry"] else [n.get("industry", "")]
+            if co["industry"] in n_industries:
+                # Primary industry gets stronger impact, secondary/spillover industries get partial weight
+                return 1.2 if co["industry"] == n_industries[0] else 0.65
+            return 0.35 # Mild baseline spillover
+                    
+        imp = sum(n["direction"] * n["impact"] / 100 * mult(n) for n in news if co["symbol"] in n["symbols"].split(",") or any(ind_name in co["industry"] for ind_name in n.get("industry", "").split(",")))
         
-        # Fixed: Reduced and re-centered fundamental drift to prevent banking sector runaway compounding
+        # Balanced fundamental drift to prevent banking sector runaway compounding
         drift = (co["fund"] - 50) / 100 * 0.0005
         
         r = co["beta"] * mkt + ind[key(co)] + drift + mom + imp + rnd.gauss(0, 0.006 * co["vol"])
