@@ -15,8 +15,7 @@ def score(c, tid):
     cap = p["cap"]
     v = max(p["value"], 1)
     
-    # 1. Relative Grading for Returns: Scale points relative to peer group performance 
-    # so negative returns (-12%, -14%) receive proportional credit instead of flatlining at 0.
+    # 1. Relative Grading for Returns: Scale points relative to peer group performance
     all_teams = c.execute("SELECT id FROM teams WHERE status='approved'").fetchall()
     all_rets = []
     for team_row in all_teams:
@@ -32,7 +31,6 @@ def score(c, tid):
     if max_ret == min_ret:
         ret = 25.0
     else:
-        # Scale team return linearly between 0 and 50 based on peer min and max
         normalized_ret = (p["ret"] - min_ret) / (max_ret - min_ret)
         ret = max(0.0, min(50.0, normalized_ret * 50.0))
     
@@ -40,17 +38,15 @@ def score(c, tid):
     cr = t["cash"] / v
     cash = 10 if 0.1 <= cr <= 0.4 else max(0, 10 - abs(cr - 0.25) * 20)
     
-    # 3. Discipline Score: Fixed so it doesn't default above 19 for everyone. 
-    # Factors in trade activity, brokerage drag, penalties, and excessive churn.
-    trade_count = t.get("trades", 0)
+    # 3. Discipline Score: Fixed sqlite3.Row attribute lookup
+    trade_count = t["trades"] if "trades" in t.keys() else 0
     if trade_count > 0:
-        brokerage_ratio = (t.get("brokerage", 0.0) / cap) * 100
-        penalty_ratio = (t.get("penalties", 0.0) / cap) * 100
-        # Introduce a churn penalty if trade count is excessively high without proportional value
+        brokerage_ratio = (t["brokerage"] if "brokerage" in t.keys() else 0.0) / cap * 100
+        penalty_ratio = (t["penalties"] if "penalties" in t.keys() else 0.0) / cap * 100
         churn_penalty = max(0.0, (trade_count - 5.0) * 0.5) if trade_count > 5 else 0.0
         disc = max(0.0, 20.0 - (brokerage_ratio * 15.0) - (penalty_ratio * 20.0) - churn_penalty)
     else:
-        disc = 5.0  # Base starting discipline for inactive teams, preventing automatic high scores
+        disc = 5.0
     disc = min(20.0, disc)
     
     # 4. Risk Score: Dynamic based on portfolio concentration and position exposure
@@ -59,7 +55,7 @@ def score(c, tid):
         w = [h["price"] * h["qty"] for h in holdings]
         total_holding_value = sum(w)
         conc = max(w) / total_holding_value if total_holding_value > 0 else 1.0
-        risk = 15.0 * (1.0 - conc)  # Penalize high asset concentration
+        risk = 15.0 * (1.0 - conc)
         lev = total_holding_value / v if v > 0 else 0
         if lev > 1.0:
             risk *= max(0.0, 1.0 - (lev - 1.0) * 0.2)
@@ -69,7 +65,7 @@ def score(c, tid):
     
     # 5. Diversification Score: Evaluated strictly by the number of unique companies invested in
     num_companies = len(holdings)
-    target_companies = 5.0  # Target 5 unique stocks for full diversification points
+    target_companies = 5.0
     div = min(15.0, (num_companies / target_companies) * 15.0)
     
     parts = dict(
