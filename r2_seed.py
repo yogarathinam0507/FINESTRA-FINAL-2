@@ -43,18 +43,18 @@ S = [("{co} order inflow tracks ahead of plan","Short-term read: supportive for 
 ("Currency swing squeezes {ind} importers","Costlier imported inputs tighten earnings for import-heavy firms.",-1)]
 # Guaranteed story types (2 negative + 1 positive per round) so that all nine marquee story types appear once across the three newsletters.
 MUST = {1: ['ceo', 'strike', 'contract'], 2: ['probe', 'death', 'acq'], 3: ['short', 'exp_curb', 'tech']}
-N_NOW, N_FUT = 6, 4                   # every newsletter: exactly 10 items = 6 current-round events + 4 next-round outlooks
-NOW_POS, FUT_POS = 4, 3               # 4+3 = 7 positive and 2+1 = 3 negative items per newsletter  (70% / 30%)
+N_NOW, N_FUT = 6, 4                   # every newsletter: exactly 10 items = 6 current-round events + 4 next-round outlooks
+NOW_POS, FUT_POS = 4, 3               # 4+3 = 7 positive and 2+1 = 3 negative items per newsletter  (70% / 30%)
 BASE = {1: .03, 2: .06, 3: .10}
 def _impacts(rng, comps, code, d, sev, spill, mixed):
-    f = rng.uniform(.8, 1.2) * (0.6 if mixed else 1); out = {}
-    for cc in comps:
-        if cc["code"] == code: out[cc["symbol"]] = round(d * BASE[sev] * f, 4)
-        elif spill and cc["code"] in SPILL.get(code, {}): out[cc["symbol"]] = round(d * BASE[sev] * f * SPILL[code][cc["code"]], 4)
-    return out
+    f = rng.uniform(.8, 1.2) * (0.6 if mixed else 1); out = {}
+    for cc in comps:
+        if cc["code"] == code: out[cc["symbol"]] = round(d * BASE[sev] * f, 4)
+        elif spill and cc["code"] in SPILL.get(code, {}): out[cc["symbol"]] = round(d * BASE[sev] * f * SPILL[code][cc["code"]], 4)
+    return out
 def _fill(t, cc):
-    reg, inp, prod = V.get(cc["code"], ("the regulator", "input costs", "core products"))
-    return t.format(co=cc["name"], ind=cc["industry"], reg=reg[0].upper() + reg[1:] if t.startswith("{reg}") else reg, inp=inp, prod=prod)
+    reg, inp, prod = V.get(cc["code"], ("the regulator", "input costs", "core products"))
+    return t.format(co=cc["name"], ind=cc["industry"], reg=reg[0].upper() + reg[1:] if t.startswith("{reg}") else reg, inp=inp, prod=prod)
 # ---- FUTURE-BASED news: strategic hints about the NEXT auction round. (key, direction, severity, category, shown sentiment, headline, subhead, body)
 F = [
 ("f_pol_up",1,2,"Outlook","Positive","{reg} is expected to unveil a support package for {ind} within weeks","Draft proposals reportedly favour domestic capacity","People familiar with the discussions say {reg} is finalising incentives for {ind}. Nothing is official, but industry bodies are lobbying hard and early signals point towards a favourable announcement before the next review cycle."),
@@ -72,41 +72,41 @@ F = [
 FUT_UP=[f for f in F if f[1]>0]; FUT_DN=[f for f in F if f[1]<0]
 NOW_UP=[t for t in T if t[1]>0]; NOW_DN=[t for t in T if t[1]<0]
 def coverage(comps, rnd, cover_seed):
-    """Which companies get a CURRENT item and which get an OUTLOOK item in round `rnd` (1..3).  With 8 companies: current covers 6 and
-    skips two (different pair every round), the outlooks cover those two plus two others - so every industry appears in EVERY newsletter and
-    at least twice as current news (and at least once as an outlook) over the three rounds."""
-    n = len(comps); order = random.Random(cover_seed).sample(comps, n); n_cur = min(N_CUR_MAX, n); miss = n - n_cur
-    skip = [(miss * (rnd - 1) + j) % n for j in range(miss)]; extra = [(miss * (rnd - 1) + miss * 3 + j) % n for j in range(miss)]
-    cur = [order[i] for i in range(n) if i not in skip]; out = [order[i] for i in skip] + [order[i] for i in extra if i not in skip]
-    return cur[:N_NOW], out[:N_FUT]
+    """Which companies get a CURRENT item and which get an OUTLOOK item in round `rnd` (1..3).  With 8 companies: current covers 6 and
+    skips two (different pair every round), the outlooks cover those two plus two others - so every industry appears in EVERY newsletter and
+    at least twice as current news (and at least once as an outlook) over the three rounds."""
+    n = len(comps); order = random.Random(cover_seed).sample(comps, n); n_cur = min(N_CUR_MAX, n); miss = n - n_cur
+    skip = [(miss * (rnd - 1) + j) % n for j in range(miss)]; extra = [(miss * (rnd - 1) + miss * 3 + j) % n for j in range(miss)]
+    cur = [order[i] for i in range(n) if i not in skip]; out = [order[i] for i in skip] + [order[i] for i in extra if i not in skip]
+    return cur[:N_NOW], out[:N_FUT]
 N_CUR_MAX = N_NOW
 def gen_round(rnd, comps, used, seed, cover_seed=None):
-    """10 newsletter items per auction round: 6 PRESENT/current events + 4 FUTURE outlooks about the NEXT round, 7 positive / 3 negative.
-    `used` = set of (code, template) already issued so every round brings new stories.  Present news re-prices companies at once;
-    an outlook only hints - its (hidden) price effect lands when the next auction round starts (Round 3's lands in the final settlement)."""
-    rng = random.Random(seed * 100 + rnd); rows = []; cur, out = coverage(comps, rnd, seed if cover_seed is None else cover_seed); items = []; round_keys = set()
-    dirs = [1] * NOW_POS + [-1] * (len(cur) - NOW_POS); rng.shuffle(dirs); forced = list(MUST.get(rnd, []))
-    # present news: place the guaranteed story types first (they fix the direction of their slot), the rest is drawn at random
-    slots = list(zip(cur, dirs)); rng.shuffle(slots)
-    for key in forced:
-        t0 = next(t for t in T if t[0] == key); want = t0[1]; i = next((i for i, (cc, d) in enumerate(slots) if d == want and (cc["code"], key) not in used), None)
-        if i is None: i = next((i for i, (cc, d) in enumerate(slots) if d == want), None)
-        if i is None: continue
-        cc, d = slots.pop(i); items.append(("now", cc, t0)); used.add((cc["code"], key)); round_keys.add(key)
-    for cc, d in slots:
-        pool = NOW_UP if d > 0 else NOW_DN; p = [t for t in pool if (cc["code"], t[0]) not in used and t[0] not in round_keys] or [t for t in pool if (cc["code"], t[0]) not in used] or pool
-        t = rng.choice(p); used.add((cc["code"], t[0])); round_keys.add(t[0]); items.append(("now", cc, t))
-    fdirs = [1] * FUT_POS + [-1] * (len(out) - FUT_POS); rng.shuffle(fdirs)
-    for cc, d in zip(out, fdirs):
-        pool = FUT_UP if d > 0 else FUT_DN; p = [t for t in pool if (cc["code"], t[0]) not in used and t[0] not in round_keys] or [t for t in pool if (cc["code"], t[0]) not in used] or pool
-        t = rng.choice(p); used.add((cc["code"], t[0])); round_keys.add(t[0]); items.append(("future", cc, t))
-    rng.shuffle(items); ex = []
-    for kind, cc, t in items:
-        if kind == "now": key, d, sev, cat, shown, icon, head, sub, body, spill = t
-        else: key, d, sev, cat, shown, head, sub, body = t; icon = "🔮"; spill = 1
-        ex.append(dict(kind=kind, cc=cc, tkey=key, sev=sev, cat=cat, shown=shown, icon=icon, head=head, sub=sub, body=body, d=d, spill=spill))
-    for i, it in enumerate(ex):
-        cc = it["cc"]
-        rows.append(dict(id=f"R{rnd}N{i+1:02d}", rnd=rnd, kind=it["kind"], ord=i, tkey=it["tkey"], industry=cc["industry"], symbol=cc["symbol"], headline=_fill(it["head"], cc), subhead=_fill(it["sub"], cc),
-            body=_fill(it["body"], cc), category=it["cat"], severity=it["sev"], sentiment=it["shown"], icon=it["icon"], impacts=json.dumps(_impacts(rng, comps, cc["code"], it["d"], it["sev"], it["spill"], False))))
-    return rows
+    """10 newsletter items per auction round: 6 PRESENT/current events + 4 FUTURE outlooks about the NEXT round, 7 positive / 3 negative.
+    `used` = set of (code, template) already issued so every round brings new stories.  Present news re-prices companies at once;
+    an outlook only hints - its (hidden) price effect lands when the next auction round starts (Round 3's lands in the final settlement)."""
+    rng = random.Random(seed * 100 + rnd); rows = []; cur, out = coverage(comps, rnd, seed if cover_seed is None else cover_seed); items = []; round_keys = set()
+    dirs = [1] * NOW_POS + [-1] * (len(cur) - NOW_POS); rng.shuffle(dirs); forced = list(MUST.get(rnd, []))
+    # present news: place the guaranteed story types first (they fix the direction of their slot), the rest is drawn at random
+    slots = list(zip(cur, dirs)); rng.shuffle(slots)
+    for key in forced:
+        t0 = next(t for t in T if t[0] == key); want = t0[1]; i = next((i for i, (cc, d) in enumerate(slots) if d == want and (cc["code"], key) not in used), None)
+        if i is None: i = next((i for i, (cc, d) in enumerate(slots) if d == want), None)
+        if i is None: continue
+        cc, d = slots.pop(i); items.append(("now", cc, t0)); used.add((cc["code"], key)); round_keys.add(key)
+    for cc, d in slots:
+        pool = NOW_UP if d > 0 else NOW_DN; p = [t for t in pool if (cc["code"], t[0]) not in used and t[0] not in round_keys] or [t for t in pool if (cc["code"], t[0]) not in used] or pool
+        t = rng.choice(p); used.add((cc["code"], t[0])); round_keys.add(t[0]); items.append(("now", cc, t))
+    fdirs = [1] * FUT_POS + [-1] * (len(out) - FUT_POS); rng.shuffle(fdirs)
+    for cc, d in zip(out, fdirs):
+        pool = FUT_UP if d > 0 else FUT_DN; p = [t for t in pool if (cc["code"], t[0]) not in used and t[0] not in round_keys] or [t for t in pool if (cc["code"], t[0]) not in used] or pool
+        t = rng.choice(p); used.add((cc["code"], t[0])); round_keys.add(t[0]); items.append(("future", cc, t))
+    rng.shuffle(items); ex = []
+    for kind, cc, t in items:
+        if kind == "now": key, d, sev, cat, shown, icon, head, sub, body, spill = t
+        else: key, d, sev, cat, shown, head, sub, body = t; icon = "🔮"; spill = 1
+        ex.append(dict(kind=kind, cc=cc, tkey=key, sev=sev, cat=cat, shown=shown, icon=icon, head=head, sub=sub, body=body, d=d, spill=spill))
+    for i, it in enumerate(ex):
+        cc = it["cc"]
+        rows.append(dict(id=f"R{rnd}N{i+1:02d}", rnd=rnd, kind=it["kind"], ord=i, tkey=it["tkey"], industry=cc["industry"], symbol=cc["symbol"], headline=_fill(it["head"], cc), subhead=_fill(it["sub"], cc),
+            body=_fill(it["body"], cc), category=it["cat"], severity=it["sev"], sentiment=it["shown"], icon=it["icon"], impacts=json.dumps(_impacts(rng, comps, cc["code"], it["d"], it["sev"], it["spill"], False))))
+    return rows
