@@ -15,22 +15,42 @@ def score(c, tid):
     cap = p["cap"]
     v = max(p["value"], 1)
     
-    # 1. Returns Score: Base 30 points for 0% return. Negative returns reduce from 30, positive increase above 30.
-    ret_score = 30.0 + p["ret"]
-    ret = max(0.0, min(50.0, ret_score))
+    # 1. Relative Grading for Returns: Scale points relative to peer group performance 
+    # so negative returns (-12%, -14%) receive proportional credit instead of flatlining at 0.
+    all_teams = c.execute("SELECT id FROM teams WHERE status='approved'").fetchall()
+    all_rets = []
+    for team_row in all_teams:
+        tp = portfolio(c, team_row["id"])
+        all_rets.append(tp["ret"])
+        
+    if not all_rets:
+        all_rets = [p["ret"]]
+        
+    max_ret = max(all_rets)
+    min_ret = min(all_rets)
+    
+    if max_ret == min_ret:
+        ret = 25.0
+    else:
+        # Scale team return linearly between 0 and 50 based on peer min and max
+        normalized_ret = (p["ret"] - min_ret) / (max_ret - min_ret)
+        ret = max(0.0, min(50.0, normalized_ret * 50.0))
     
     # 2. Cash Management Score: Target 10% to 40% cash buffer (optimal 25%)
     cr = t["cash"] / v
     cash = 10 if 0.1 <= cr <= 0.4 else max(0, 10 - abs(cr - 0.25) * 20)
     
-    # 3. Discipline Score: Dynamically reacts to trading activity, brokerage drag, and penalties
+    # 3. Discipline Score: Fixed so it doesn't default above 19 for everyone. 
+    # Factors in trade activity, brokerage drag, penalties, and excessive churn.
     trade_count = t.get("trades", 0)
     if trade_count > 0:
         brokerage_ratio = (t.get("brokerage", 0.0) / cap) * 100
         penalty_ratio = (t.get("penalties", 0.0) / cap) * 100
-        disc = max(0.0, 20.0 - (brokerage_ratio * 10.0) - (penalty_ratio * 10.0))
+        # Introduce a churn penalty if trade count is excessively high without proportional value
+        churn_penalty = max(0.0, (trade_count - 5.0) * 0.5) if trade_count > 5 else 0.0
+        disc = max(0.0, 20.0 - (brokerage_ratio * 15.0) - (penalty_ratio * 20.0) - churn_penalty)
     else:
-        disc = 0.0
+        disc = 5.0  # Base starting discipline for inactive teams, preventing automatic high scores
     disc = min(20.0, disc)
     
     # 4. Risk Score: Dynamic based on portfolio concentration and position exposure
