@@ -25,39 +25,41 @@ RISK = {"GOLD":-1.0,"CRUD":0.5,"INMT":1.0}
 
 # Round 1 Events: Multi-industry impact maps via `sens` dictionaries affecting 2-3 sectors simultaneously
 SHOCK = [
-    ("Regulator eases capital norms and launches a credit-guarantee scheme - lenders & fintech surge", "BANK", 1, 3, {"AURB":1.3, "MRDN":1.6, "NVTL":0.5, "BLDX":0.3}, 4.0, 4),
-    ("Cloud boom & 5G rollout: record contract wins lift tech and telecom infrastructure", "TECH", 1, 3, {"NVTL":1.4, "QBIT":1.7, "AURB":0.3, "BLDX":0.2}, 3.8, 4),
-    ("Government fast-tracks EV incentives and charging corridors - auto and manufacturing rally", "AUTO", 1, 3, {"VOLT":1.2, "EVRA":1.7, "FRGN":0.4, "INMT":0.3}, 4.2, 4),
-    ("Record clean-power tender and tariff reset lift energy producers and grid suppliers", "ENERGY", 1, 3, {"SOLR":1.7, "PTRX":1.0, "BLDX":0.3}, 4.0, 4),
-    ("Breakthrough therapy approved on a fast track - healthcare names and hospital groups jump", "PHARMA", 1, 3, {"HLXA":1.7, "CRBY":1.1, "AURB":0.2}, 4.0, 4),
-    ("Budget lifts infrastructure outlay by a third - builders, steel makers and metal commodities surge", "INFRA", 1, 3, {"BLDX":1.7, "FRGN":1.3, "INMT":0.8, "CRUD":0.4}, 4.0, 4),
-    ("Gold surges to a record as central banks pile in; commodity-linked funds and metal futures rally", "COMM", 1, 3, {"GOLD":1.8, "INMT":0.5, "CRUD":0.3, "AURB":0.2}, 3.6, 4),
-    ("Data-breach scandal at a leading IT services major triggers client pullbacks and banking caution", "TECH", -1, 3, {"NVTL":1.5, "QBIT":1.3, "AURB":-0.4}, 4.0, 4),
-    ("Bridge collapse prompts nationwide safety audits, halting infrastructure projects and steel demand", "INFRA", -1, 3, {"BLDX":1.6, "FRGN":1.0, "INMT":-0.5}, 4.0, 4),
-    ("Battery-fire probe: regulator halts EV sales pending a safety review, affecting auto and lithium supply chains", "AUTO", -1, 3, {"VOLT":1.0, "EVRA":1.8, "INMT":-0.3}, 4.2, 4)
+    ("RBI Holds Key Rates; Tech Spending Surge Offset by EV Subsidy Cut Concerns", "BANK", 1, 3, {"AURB":1.2, "MRDN":1.2, "NVTL":1.1, "QBIT":1.0, "VOLT":-0.8, "EVRA":-0.9}, 3.5, 4),
+    ("Renewable Integration Mandates Boost Clean Power; Infrastructure Approvals Accelerate", "ENERGY", 1, 3, {"SOLR":1.5, "PTRX":1.2, "BLDX":1.3, "FRGN":1.2, "INMT":1.1}, 3.8, 4),
+    ("Commodity Volatility Hits Peak; Global Crude Supply Disruption Sparks Energy Rally", "COMM", 1, 3, {"GOLD":1.6, "CRUD":1.7, "PTRX":1.4, "SOLR":1.2, "HLXA":-0.6}, 4.0, 4),
+    ("FinTech Regulation Tightens as Telecom Operators Expand 5G Enterprise Services", "BANK", 1, 3, {"AURB":1.3, "MRDN":1.1, "NVTL":1.3, "QBIT":1.2}, 3.2, 4),
+    ("Infrastructure Spending Boom Triggers Industrial Metal Shortage", "INFRA", 1, 3, {"BLDX":1.5, "FRGN":1.4, "INMT":1.6, "GOLD":0.8}, 3.8, 4),
+    ("Healthcare Modernization Grant Announced; EV Battery Cost Breakthrough Reported", "PHARMA", 1, 3, {"HLXA":1.5, "CRBY":1.3, "VOLT":1.3, "EVRA":1.5}, 3.5, 4),
+    ("Central Banks Boost Gold Reserves Amid Crude Stabilization", "COMM", 1, 3, {"GOLD":1.7, "AURB":1.1, "MRDN":1.1, "CRUD":-0.3}, 3.2, 4),
+    ("Global Green Energy Accord Signed; Tech Offshoring Demand Soars", "ENERGY", 1, 3, {"SOLR":1.6, "NVTL":1.4, "QBIT":1.3, "PTRX":0.5}, 3.6, 4)
 ]
 
-TIMED = ["X01","X08","X03","X09","X04","X05","X07"]
+TIMED = ["X01","X08","X03","X09","X04","X05","X07","X02"]
 
 SURP = [
-    ("Unexpected earnings beat at leading banks", "BANK", 1, 3, {"AURB":1.3, "MRDN":1.4}, 3.2, 4),
-    ("Cyber breach at a major payments platform", "BANK", -1, 3, {"AURB":-1.2, "MRDN":-1.3}, 3.2, 4),
-    ("Mega telecom contract won by an IT major", "TECH", 1, 3, {"NVTL":1.4, "QBIT":1.2}, 3.2, 4),
-    ("Record EV order from a fleet operator", "AUTO", 1, 3, {"VOLT":1.3, "EVRA":1.5}, 3.2, 4),
-    ("Battery fire recall announced by an auto maker", "AUTO", -1, 3, {"VOLT":-1.3, "EVRA":-1.6}, 3.2, 4),
-    ("Breakthrough solar efficiency claimed", "ENERGY", 1, 3, {"SOLR":1.5, "PTRX":0.4}, 3.2, 4),
-    ("Pipeline leak halts a major refinery", "ENERGY", -1, 3, {"PTRX":-1.5, "SOLR":0.2}, 3.2, 4),
-    ("Blockbuster clinical trial results released", "PHARMA", 1, 3, {"HLXA":1.6, "CRBY":0.8}, 3.2, 4),
-    ("Defence manufacturing order awarded to infrastructure builders", "INFRA", 1, 3, {"BLDX":1.4, "FRGN":1.2}, 3.2, 4),
-    ("Stimulus package announced across industrial sectors", "(all)", 1, 3, {"AURB":1.0,"NVTL":1.0,"VOLT":1.0,"SOLR":1.0,"HLXA":1.0,"BLDX":1.0,"GOLD":1.0}, 2.0, 4),
-    ("Gold hits a record on central-bank buying", "GOLD", 1, 3, {"GOLD":1.8, "INMT":0.4}, 3.2, 4)
+    ("Aurora Bank & Meridian Finserv Report Record Quarterly Profits", "BANK", 1, 3, {"AURB":1.5, "MRDN":1.4}, 4.0, 3),
+    ("Novatel Systems Secures Multi-Million Dollar European Cloud Contract", "TECH", 1, 3, {"NVTL":1.6}, 4.5, 3),
+    ("Quantabit Software Experiences Temporary Cybersecurity Data Breach", "TECH", -1, 3, {"QBIT":1.5}, 4.0, 3),
+    ("Voltaro Motors and Evara EV Announce National Fast-Charging JV", "AUTO", 1, 3, {"VOLT":1.5, "EVRA":1.5}, 3.8, 3),
+    ("Solaris Power Wins Massive 500MW State Solar Park Tender", "ENERGY", 1, 3, {"SOLR":1.6}, 4.2, 3),
+    ("Petrix Oil & Gas Discovers High-Capacity Offshore Natural Gas Reserve", "ENERGY", 1, 3, {"PTRX":1.7, "CRUD":0.8}, 4.5, 3),
+    ("Helixa Pharma Receives US FDA Approval for Oncology Treatment Drug", "PHARMA", 1, 3, {"HLXA":1.8}, 5.0, 3),
+    ("Carebay Hospitals Announces Regional Multispecialty Hospital Acquisition", "PHARMA", 1, 3, {"CRBY":1.4}, 3.5, 3),
+    ("Buildex Infra Lands Major Contract for Urban Metro Rail Phase II", "INFRA", 1, 3, {"BLDX":1.5, "FRGN":0.8}, 4.0, 3),
+    ("Forgenix Steel Faces Primary Facility Shutdown Due to Power Grid Failures", "INFRA", -1, 3, {"FRGN":1.6, "INMT":0.5}, 4.2, 3),
+    ("Aurum Gold Trust Experiences Strong Bullion Spot Inflows", "COMM", 1, 3, {"GOLD":1.4}, 3.2, 3),
+    ("Global Oil Production Cuts Send Crude Futures Sharply Higher", "COMM", 1, 3, {"CRUD":1.6, "PTRX":1.5}, 4.0, 3),
+    ("Import Restrictions on Raw Iron Ore Push Spot Prices Up", "INFRA", -1, 3, {"INMT":1.4, "FRGN":1.5}, 3.5, 3),
+    ("Tech Sector Wage Inflation and Rising Talent Attrition Pressure Margins", "TECH", -1, 3, {"NVTL":1.3, "QBIT":1.3}, 3.0, 3),
+    ("Aurora Bank Launches Corporate Healthcare Funding Program with Helixa Pharma", "BANK", 1, 3, {"AURB":1.3, "HLXA":1.3}, 3.2, 3)
 ]
 
 MEGA = [
-    ("MEGA EVENT: Global financial panic - circuit breakers trip as equity markets plunge; safe-haven assets surge", None, -1, 5,
-     {"AURB":1.7,"MRDN":1.9,"NVTL":1.4,"QBIT":1.7,"VOLT":1.6,"EVRA":1.9,"SOLR":1.5,"PTRX":1.2,"HLXA":.7,"CRBY":.8,"BLDX":1.5,"FRGN":1.6,"GOLD":-1.5,"CRUD":.9,"INMT":1.4}, 9.0, 4),
-    ("MEGA EVENT: Landmark stimulus-and-reform budget triggers violent sector rotation - tech, autos, infrastructure and banks surge while energy and gold sell off", None, 1, 5,
-     {"AURB":1.1,"MRDN":1.2,"NVTL":1.6,"QBIT":2.0,"VOLT":1.8,"EVRA":2.2,"SOLR":-.6,"PTRX":-1.2,"HLXA":.4,"CRBY":.4,"BLDX":1.6,"FRGN":1.7,"GOLD":-1.0,"CRUD":-1.4,"INMT":1.3}, 8.0, 4)
+    ("MEGA EVENT: Sovereign Debt Crisis Triggers Global Market Sell-Off", None, -1, 5,
+     {"AURB":1.7,"MRDN":1.9,"NVTL":1.4,"QBIT":1.7,"VOLT":1.6,"EVRA":1.9,"SOLR":1.5,"PTRX":1.2,"HLXA":.7,"CRBY":.8,"BLDX":1.5,"FRGN":1.6,"GOLD":-1.5,"CRUD":.9,"INMT":1.4}, 6.0, 5),
+    ("MEGA EVENT: Central Government Unveils Massive Economic Revitalization Package", None, 1, 5,
+     {"AURB":1.5,"MRDN":1.6,"NVTL":1.8,"QBIT":2.0,"VOLT":1.9,"EVRA":2.2,"SOLR":1.5,"PTRX":1.2,"HLXA":1.1,"CRBY":1.1,"BLDX":1.8,"FRGN":1.9,"GOLD":-1.0,"CRUD":-1.0,"INMT":1.7}, 6.5, 5)
 ]
 
 def _syms(ind):
