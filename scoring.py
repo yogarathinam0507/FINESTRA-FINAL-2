@@ -12,64 +12,87 @@ def portfolio(c, tid):
 def score(c, tid):
     p = portfolio(c, tid)
     t = p["team"]
-    cap = p["cap"]
     v = max(p["value"], 1)
     
-    # 1. Return Points Calculation:
-    # Baseline: 25 points for 0% return.
-    # Positive return: +1 point per +1% return (e.g., +2% -> 27 pts, +13% -> 38 pts).
-    # Negative return: -1 point per -2% return (e.g., -2% -> 24 pts, -20% -> 15 pts).
-    # Max points: 60, Minimum points: 0.
+    # 1. Return Points (Max 60 pts):
+    # Baseline: 25 points for 0% return. +1 per +1% gain, -1 per -2% loss. Capped between 0 and 60.
     portfolio_ret = p["ret"]
     if portfolio_ret >= 0:
         ret_score = 25.0 + portfolio_ret
     else:
-        # -2% drops by 1 point -> negative return divided by 2
         ret_score = 25.0 + (portfolio_ret / 2.0)
-        
     ret = round(max(0.0, min(60.0, ret_score)), 2)
     
-    # 2. Cash Management Score: Max 10 points (Target 10% to 40% cash buffer, optimal 25%)
-    cr = t["cash"] / v
-    cash = 10 if 0.1 <= cr <= 0.4 else max(0, 10 - abs(cr - 0.25) * 20)
-    
-    # 3. Discipline Score: Safe sqlite3.Row lookup
-    trade_count = t["trades"] if "trades" in t.keys() else 0
-    if trade_count > 0:
-        brokerage_ratio = (t["brokerage"] if "brokerage" in t.keys() else 0.0) / cap * 100
-        penalty_ratio = (t["penalties"] if "penalties" in t.keys() else 0.0) / cap * 100
-        churn_penalty = max(0.0, (trade_count - 5.0) * 0.5) if trade_count > 5 else 0.0
-        disc = max(0.0, 10.0 - (brokerage_ratio * 10.0) - (penalty_ratio * 15.0) - churn_penalty)
+    # 2. Cash Management Points (Max 10 pts):
+    # 5% - 10% reserve -> 8 pts
+    # 11% - 20% reserve -> 5 pts
+    # Above 20% or below 5% -> 0 pts
+    cr = (t["cash"] / v) * 100
+    if 5.0 <= cr <= 10.0:
+        cash = 8.0
+    elif 11.0 <= cr <= 20.0:
+        cash = 5.0
     else:
-        disc = 3.0
-    disc = min(10.0, disc)
-    
-    # 4. Risk Score: Max 10 points (Dynamic based on portfolio concentration and leverage)
+        cash = 0.0
+        
+    # 3. Diversification Points (Max 20 pts):
+    # Starts at 0 before trading. Evaluated by max single-sector share of portfolio value.
     holdings = p["holdings"]
-    if holdings:
-        w = [h["price"] * h["qty"] for h in holdings]
-        total_holding_value = sum(w)
-        conc = max(w) / total_holding_value if total_holding_value > 0 else 1.0
-        risk = 10.0 * (1.0 - conc)
-        lev = total_holding_value / v if v > 0 else 0
-        if lev > 1.0:
-            risk *= max(0.0, 1.0 - (lev - 1.0) * 0.2)
+    trade_count = t["trades"] if "trades" in t.keys() else 0
+    
+    if trade_count == 0 or not holdings:
+        div = 0.0
     else:
-        risk = 0.0
-    risk = round(max(0.0, min(10.0, risk)), 2)
-    
-    # 5. Diversification Score: Max 20 points (Evaluated strictly by the number of unique companies invested in)
-    num_companies = len(holdings)
-    target_companies = 5.0  # Target 5 unique stocks for full 20 points
-    div = round(min(20.0, (num_companies / target_companies) * 20.0), 2)
-    
+        sector_totals = {}
+        total_portfolio_value = v
+        for h in holdings:
+            sec = h["industry"]
+            val_h = h["price"] * h["qty"]
+            sector_totals[sec] = sector_totals.get(sec, 0.0) + val_h
+            
+        max_sector_share = max(sector_totals.values()) / total_portfolio_value if total_portfolio_value > 0 else 0.0
+        share_pct = max_sector_share * 100.0
+        
+        if share_pct <= 20.0:
+            div = 18.5  # Range 17 - 20
+        elif 20.0 < share_pct <= 40.0:
+            div = 13.0  # Range 11 - 15
+        else:
+            div = 6.0   # Range 5 - 7
+            
+    # 4. Beta Points (Max 10 pts replacing Risk):
+    # Default/starting point is 8 (Beta = 1.0). Scales based on portfolio beta performance relative to market index.
+    # Estimate portfolio beta from weighted average of company betas in holdings
+    if holdings:
+        total_holding_val = sum(h["price"] * h["qty"] for h in holdings)
+        if total_holding_val > 0:
+            # Query company betas
+            betas = {row["symbol"]: row["beta"] for row in c.execute("SELECT symbol, beta FROM companies").fetchall()}
+            weighted_beta = sum((h["price"] * h["qty"] / total_holding_val) * betas.get(h["symbol"], 1.0) for h in holdings)
+        else:
+            weighted_beta = 1.0
+    else:
+        weighted_beta = 1.0
+        
+    if weighted_beta > 1.3 and portfolio_ret > 0:
+        beta_score = 10.0
+    elif 1.0 <= weighted_beta <= 1.25:
+        beta_score = 9.0
+    elif weighted_beta == 1.0:
+        beta_score = 8.0  # Starting point
+    elif 0.7 < weighted_beta < 1.0:
+        beta_score = 6.0
+    else:
+        beta_score = 5.0
+        
     parts = dict(
         returns=ret,
-        cash=round(cash, 2),
-        discipline=round(disc, 2),
-        risk=risk,
-        diversification=div
+        cash=cash,
+        diversification=div,
+        beta=beta_score
     )
+    
+    # Total sums to exactly 100 max points (60 + 10 + 20 + 10)
     return dict(
         total=round(sum(parts.values()), 2),
         parts=parts,
