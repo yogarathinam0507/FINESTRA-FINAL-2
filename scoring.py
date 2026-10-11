@@ -15,30 +15,21 @@ def score(c, tid):
     cap = p["cap"]
     v = max(p["value"], 1)
     
-    # 1. Robust Relative Grading for Returns: 
-    # Fetches all active team returns. Even if returns are negative (-12%, -14%), 
-    # they are scaled relative to the group so the best gets closer to 50 and worst gets a fair floor (>0).
-    all_teams = c.execute("SELECT id FROM teams WHERE status='approved'").fetchall()
-    all_rets = []
-    for team_row in all_teams:
-        tp = portfolio(c, team_row["id"])
-        all_rets.append(tp["ret"])
-        
-    if not all_rets:
-        all_rets = [p["ret"]]
-        
-    max_ret = max(all_rets)
-    min_ret = min(all_rets)
-    
-    if max_ret == min_ret:
-        ret = 25.0
+    # 1. Return Points Calculation:
+    # Baseline: 25 points for 0% return.
+    # Positive return: +1 point per +1% return (e.g., +2% -> 27 pts, +13% -> 38 pts).
+    # Negative return: -1 point per -2% return (e.g., -2% -> 24 pts, -20% -> 15 pts).
+    # Max points: 60, Minimum points: 0.
+    portfolio_ret = p["ret"]
+    if portfolio_ret >= 0:
+        ret_score = 25.0 + portfolio_ret
     else:
-        # Relative scaling formula ensuring minimum return doesn't completely flatline to 0 unless absolute bottom
-        normalized_ret = (p["ret"] - min_ret) / (max_ret - min_ret)
-        # Give a small buffer (e.g. min 5 points) so negative returns don't strictly hit 0 points
-        ret = round(max(5.0, min(50.0, normalized_ret * 45.0 + 5.0)), 2)
+        # -2% drops by 1 point -> negative return divided by 2
+        ret_score = 25.0 + (portfolio_ret / 2.0)
+        
+    ret = round(max(0.0, min(60.0, ret_score)), 2)
     
-    # 2. Cash Management Score: Target 10% to 40% cash buffer (optimal 25%)
+    # 2. Cash Management Score: Max 10 points (Target 10% to 40% cash buffer, optimal 25%)
     cr = t["cash"] / v
     cash = 10 if 0.1 <= cr <= 0.4 else max(0, 10 - abs(cr - 0.25) * 20)
     
@@ -48,36 +39,36 @@ def score(c, tid):
         brokerage_ratio = (t["brokerage"] if "brokerage" in t.keys() else 0.0) / cap * 100
         penalty_ratio = (t["penalties"] if "penalties" in t.keys() else 0.0) / cap * 100
         churn_penalty = max(0.0, (trade_count - 5.0) * 0.5) if trade_count > 5 else 0.0
-        disc = max(0.0, 20.0 - (brokerage_ratio * 15.0) - (penalty_ratio * 20.0) - churn_penalty)
+        disc = max(0.0, 10.0 - (brokerage_ratio * 10.0) - (penalty_ratio * 15.0) - churn_penalty)
     else:
-        disc = 5.0
-    disc = min(20.0, disc)
+        disc = 3.0
+    disc = min(10.0, disc)
     
-    # 4. Risk Score: Dynamic based on portfolio concentration and position exposure
+    # 4. Risk Score: Max 10 points (Dynamic based on portfolio concentration and leverage)
     holdings = p["holdings"]
     if holdings:
         w = [h["price"] * h["qty"] for h in holdings]
         total_holding_value = sum(w)
         conc = max(w) / total_holding_value if total_holding_value > 0 else 1.0
-        risk = 15.0 * (1.0 - conc)
+        risk = 10.0 * (1.0 - conc)
         lev = total_holding_value / v if v > 0 else 0
         if lev > 1.0:
             risk *= max(0.0, 1.0 - (lev - 1.0) * 0.2)
     else:
         risk = 0.0
-    risk = max(0.0, min(15.0, risk))
+    risk = round(max(0.0, min(10.0, risk)), 2)
     
-    # 5. Diversification Score: Evaluated strictly by the number of unique companies invested in
+    # 5. Diversification Score: Max 20 points (Evaluated strictly by the number of unique companies invested in)
     num_companies = len(holdings)
-    target_companies = 5.0
-    div = min(15.0, (num_companies / target_companies) * 15.0)
+    target_companies = 5.0  # Target 5 unique stocks for full 20 points
+    div = round(min(20.0, (num_companies / target_companies) * 20.0), 2)
     
     parts = dict(
-        returns=round(ret, 2),
+        returns=ret,
         cash=round(cash, 2),
         discipline=round(disc, 2),
-        risk=round(risk, 2),
-        diversification=round(div, 2)
+        risk=risk,
+        diversification=div
     )
     return dict(
         total=round(sum(parts.values()), 2),
