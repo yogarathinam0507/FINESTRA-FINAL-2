@@ -60,30 +60,49 @@ SHOCK = [
 
 TIMED = ["X01","X02","X03","X04","X05","X06","X07","X08"]
 
-# Round 1 Manual Release News Cards (Affects 1-2 industries/tickers)
+# Round 1 Manual Release News Cards (3 per sector: 2 Positive, 1 Negative)
 SURP = [
-    ("Aurora Bank & Meridian Finserv Report Record Quarterly Profits", "Banking & Financial Services", 1, 3, {"AURB":1.5, "MRDN":1.4}, 4.0, 3),
-    ("Novatel Systems Secures Multi-Million Dollar European Cloud Contract", "Technology & Telecom", 1, 3, {"NVTL":1.6}, 4.5, 3),
-    ("Quantabit Software Experiences Temporary Cybersecurity Data Breach", "Technology & Telecom", -1, 3, {"QBIT":1.5}, 4.0, 3),
-    ("Voltaro Motors and Evara EV Announce National Fast-Charging JV", "Automobile & EV, Infrastructure", 1, 3, {"VOLT":1.5, "EVRA":1.5, "BLDX":0.5}, 3.8, 3),
-    ("Solaris Power Wins Massive 500MW State Solar Park Tender", "Energy & Renewables", 1, 3, {"SOLR":1.6}, 4.2, 3),
-    ("Petrix Oil & Gas Discovers High-Capacity Offshore Natural Gas Reserve", "Energy & Renewables, Commodity-Linked", 1, 3, {"PTRX":1.7, "CRUD":0.8}, 4.5, 3),
-    ("Helixa Pharma Receives US FDA Approval for Oncology Treatment Drug", "Healthcare & Pharma", 1, 3, {"HLXA":1.8}, 5.0, 3),
-    ("Carebay Hospitals Announces Regional Multispecialty Hospital Acquisition", "Healthcare & Pharma", 1, 3, {"CRBY":1.4}, 3.5, 3),
-    ("Buildex Infra Lands Major Contract for Urban Metro Rail Phase II", "Infrastructure, Metals & Manufacturing", 1, 3, {"BLDX":1.5, "FRGN":0.8}, 4.0, 3),
-    ("Forgenix Steel Faces Primary Facility Shutdown Due to Power Grid Failures", "Metals & Manufacturing, Infrastructure", -1, 3, {"FRGN":1.6, "INMT":0.5}, 4.2, 3),
-    ("Aurum Gold Trust Experiences Strong Bullion Spot Inflows", "Commodity-Linked", 1, 3, {"GOLD":1.4}, 3.2, 3),
-    ("Global Oil Production Cuts Send Crude Futures Sharply Higher", "Commodity-Linked, Energy & Renewables", 1, 3, {"CRUD":1.6, "PTRX":1.5}, 4.0, 3),
-    ("Import Restrictions on Raw Iron Ore Push Spot Prices Up", "Metals & Manufacturing, Commodity-Linked", -1, 3, {"INMT":1.4, "FRGN":1.5}, 3.5, 3),
-    ("Tech Sector Wage Inflation and Rising Talent Attrition Pressure Margins", "Technology & Telecom", -1, 3, {"NVTL":1.3, "QBIT":1.3}, 3.0, 3),
-    ("Aurora Bank Launches Corporate Healthcare Funding Program with Helixa Pharma", "Banking & Financial Services, Healthcare & Pharma", 1, 3, {"AURB":1.3, "HLXA":1.3}, 3.2, 3)
+    # 1. Banking & Financial Services
+    ("Aurora Bank & Meridian Finserv Report Record Quarterly Profit & Loan Growth", "Banking & Financial Services", 1, 3, {"AURB":1.5, "MRDN":1.4}, 4.0, 3),
+    ("RBI Grants Express Approval for Next-Gen FinTech Expansion", "Banking & Financial Services", 1, 2, {"AURB":1.3, "MRDN":1.2}, 3.0, 3),
+    ("Cybersecurity Vulnerability Discovered in Shared Payment Gateway", "Banking & Financial Services", -1, 3, {"AURB":-1.2, "MRDN":-1.4}, 4.0, 3),
+    
+    # 2. Technology & Telecom
+    ("Novatel Systems Secures Multi-Million Dollar European Telecom Deal", "Technology & Telecom", 1, 3, {"NVTL":1.6}, 4.5, 3),
+    ("Quantabit Software Launches Enterprise AI Suite; Order Pipeline Soars", "Technology & Telecom", 1, 2, {"QBIT":1.5}, 3.5, 3),
+    ("Quantabit Software Experiences Cloud Breach; Client Audits Trigger Delays", "Technology & Telecom", -1, 3, {"QBIT":-1.5, "NVTL":-0.8}, 4.0, 3),
+    
+    # 3. Automobile & EV
+    ("Voltaro Motors & Evara EV Partner for Highway Supercharging Corridor", "Automobile & EV, Infrastructure", 1, 3, {"VOLT":1.5, "EVRA":1.5, "BLDX":0.5}, 3.8, 3),
+    ("Evara EV Wins Landmark Order for Commercial Delivery Fleet Units", "Automobile & EV", 1, 2, {"EVRA":1.6, "VOLT":0.8}, 3.5, 3),
+    ("Thermal Overheating Probe Halts Shipments for Voltaro Motors", "Automobile & EV", -1, 3, {"VOLT":-1.6, "EVRA":-1.1}, 4.0, 3),
+    
+    # 4. Energy & Renewables
+    ("Solaris Power Bags Massive 500MW Government Solar Park Tender", "Energy & Renewables", 1, 3, {"SOLR":1.6}, 4.2, 3),
+    ("Petrix Oil & Gas Strikes Ultra-Deep Offshore Natural Gas Field", "Energy & Renewables, Commodity-Linked", 1, 3, {"PTRX":1.7, "CRUD":0.8}, 4.5, 3),
+    ("Key Pipeline Rupture Forces Production Shutdown at Petrix Facility", "Energy & Renewables", -1, 3, {"PTRX":-1.6, "SOLR":0.4}, 4.0, 3),
+    
+    # 5. Healthcare & Pharma
+    ("Helixa Pharma Receives Full US FDA Approval for Generic Oncology Drug", "Healthcare & Pharma", 1, 3, {"HLXA":1.8}, 5.0, 3),
+    ("Carebay Hospitals Expands Bed Capacity via Regional Acquisition", "Healthcare & Pharma", 1, 2, {"CRBY":1.4}, 3.5, 3),
+    ("Health Regulator Flags Trial Inconsistencies for Helixa Pharma Drug", "Healthcare & Pharma", -1, 3, {"HLXA":-1.7, "CRBY":-0.5}, 4.0, 3),
+    
+    # 6. Infrastructure & Metals
+    ("Buildex Infra Awarded Multi-Billion Urban Transit Project", "Infrastructure, Metals & Manufacturing", 1, 3, {"BLDX":1.5, "FRGN":0.8}, 4.0, 3),
+    ("Forgenix Steel Signs Export Bilateral Supply Contract for High-Grade Alloy", "Metals & Manufacturing", 1, 2, {"FRGN":1.4, "INMT":0.6}, 3.5, 3),
+    ("Forgenix Steel Facility Outage Caused by Regional Power Failure", "Metals & Manufacturing, Infrastructure", -1, 3, {"FRGN":-1.6, "INMT":-0.7}, 4.2, 3),
+    
+    # 7. Commodity-Linked
+    ("Central Banks Accelerate Bullion Purchases; Aurum Gold Trust Surges", "Commodity-Linked", 1, 3, {"GOLD":1.4}, 3.2, 3),
+    ("OPEC+ Production Cuts Send Crude Oil Futures to Multi-Month Highs", "Commodity-Linked, Energy & Renewables", 1, 2, {"CRUD":1.6, "PTRX":1.5}, 4.0, 3),
+    ("Sluggish Smelting Demand Slams Ironcore Industrial Metals Prices", "Commodity-Linked, Metals & Manufacturing", -1, 3, {"INMT":-1.5, "FRGN":-0.8}, 3.5, 3)
 ]
 
 # Round 1 Mega Surprise Events (Affects All Sectors)
 MEGA = [
     ("MEGA EVENT: Sovereign Debt Crisis Triggers Global Market Sell-Off", "Entire Market (All Sectors)", -1, 5,
      {"AURB":1.7,"MRDN":1.9,"NVTL":1.4,"QBIT":1.7,"VOLT":1.6,"EVRA":1.9,"SOLR":1.5,"PTRX":1.2,"HLXA":.7,"CRBY":.8,"BLDX":1.5,"FRGN":1.6,"GOLD":-1.5,"CRUD":.9,"INMT":1.4}, 6.0, 5),
-    ("MEGA EVENT: Central Government Unveils Massive Economic Revitalization Package", "Entire Market (All Sectors)", 1, 5,
+    ("MEGA EVENT: Central Government Unveils Massive Economic Revitalization Budget", "Entire Market (All Sectors)", 1, 5,
      {"AURB":1.5,"MRDN":1.6,"NVTL":1.8,"QBIT":2.0,"VOLT":1.9,"EVRA":2.2,"SOLR":1.5,"PTRX":1.2,"HLXA":1.1,"CRBY":1.1,"BLDX":1.8,"FRGN":1.9,"GOLD":-1.0,"CRUD":-1.0,"INMT":1.7}, 6.5, 5)
 ]
 
@@ -132,7 +151,7 @@ def assign_news_times(c, mode, seed=11):
 def _defaults():
     return dict(status="idle",elapsed="0",run_since="0",upd="0",time_scale="1",brk_normal="0.10",capital="1000000",spectator_code="SPECTATE",reg_code="",auto_news="1",
         tick_sec="45",final_tick="30",final5_sec="600",test_sec="300",r1_sec="2400",trans_sec="60",pre_sec="600",brk_sec="60",news_sec="120",disc_sec="180",auc_sec="600",
-        window_sec="60",open_sec="30",r2_cash="10000000",r2_teams="5",lots_per_co="1",lot_bp="10000",newsletter_on="1",stage_cur="idle",hold_at="",cfg_ver="6",
+        window_sec="60",open_sec="30",r2_cash="10000000",r2_teams="5",lots_per_co="1",lot_bp="10000",newsletter_on="1",stage_cur="idle",hold_at="",cfg_ver="7",
         borrow_limit="3000000",borrow_fee_pct="5",borrow_pen="300000",swap_ttl="180",chart_epoch="0")
 
 def migrate(c):
@@ -142,13 +161,13 @@ def migrate(c):
     for k, v in _defaults().items():
         if D.get(c, k) is None: D.put(c, k, v)
     cv = D.get(c, "cfg_ver")
-    # Force re-seed on version bump to "6" to clear old single-industry cache
-    if cv != "6":
+    # Bumped cfg_ver to "7" to force database re-seeding on Render
+    if cv != "7":
         seed_market(c)
         c.execute("DELETE FROM holdings"); c.execute("DELETE FROM orders"); c.execute("DELETE FROM leaderboard_snapshots")
         c.execute("UPDATE teams SET cash=?,brokerage=0,penalties=0,trades=0,prev_rank=0",(D.get(c,"capital"),))
         seed_news(c)
-        D.put(c,"cfg_ver","6")
+        D.put(c,"cfg_ver","7")
         if D.get(c,"status") in ("running","paused") and D.get(c,"stage_cur") in ("test","r1"): 
             assign_news_times(c, D.get(c,"stage_cur"))
 
