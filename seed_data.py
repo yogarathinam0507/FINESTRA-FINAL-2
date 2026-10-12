@@ -23,7 +23,45 @@ CO = [
 
 RISK = {"GOLD":-1.0,"CRUD":0.5,"INMT":1.0}
 
-# Round 1 Automatic News Letters (Affects 2-3 industries simultaneously)
+# Round 1 Timed Automatic Cross-Sector News Releases (Minutes 3, 7, 11, 15, 19, 23, 27)
+TIMED_NEWS = [
+    # Minute 3 (180 seconds)
+    (185, "Aurora Bank Inks Exclusive Retail Auto Financing Deal with Voltaro Motors", 
+     "Banking & Financial Services, Automobile & EV", "AURB,VOLT", 1, 2, 
+     {"AURB":1.3, "VOLT":1.4}, 3.0, 3, "auto"),
+     
+    # Minute 7 (420 seconds)
+    (425, "Novatel Systems Deploys Cloud Smart Hospital Suite Across Carebay Network", 
+     "Technology & Telecom, Healthcare & Pharma", "NVTL,CRBY", 1, 3, 
+     {"NVTL":1.5, "CRBY":1.3}, 3.5, 3, "auto"),
+     
+    # Minute 11 (660 seconds)
+    (665, "Environmental Regulatory Delay Stalls Coastal Refinery Expansion", 
+     "Energy & Renewables, Infrastructure, Metals & Manufacturing", "PTRX,BLDX", -1, 2, 
+     {"PTRX":-1.3, "BLDX":-1.2}, 3.0, 3, "auto"),
+     
+    # Minute 15 (900 seconds)
+    (905, "Ironcore Industrial Metals Contracts Quantabit Software for AI Mine Automation", 
+     "Commodity-Linked, Technology & Telecom", "INMT,QBIT", 1, 2, 
+     {"INMT":1.3, "QBIT":1.4}, 3.0, 3, "auto"),
+     
+    # Minute 19 (1140 seconds)
+    (1145, "Meridian Finserv Offers Supply Chain Financing to Helixa Pharma Vendors", 
+     "Banking & Financial Services, Healthcare & Pharma", "MRDN,HLXA", 1, 3, 
+     {"MRDN":1.4, "HLXA":1.4}, 3.5, 3, "auto"),
+     
+    # Minute 23 (1380 seconds)
+    (1385, "Solaris Power and Evara EV Build Solar-Powered Fleet Charging Depots", 
+     "Energy & Renewables, Automobile & EV", "SOLR,EVRA", 1, 3, 
+     {"SOLR":1.5, "EVRA":1.5}, 3.5, 3, "auto"),
+     
+    # Minute 27 (1620 seconds)
+    (1625, "Global Freight & Fuel Costs Surge, Pressuring Manufacturing Margins", 
+     "Commodity-Linked, Infrastructure, Metals & Manufacturing", "CRUD,FRGN", -1, 3, 
+     {"CRUD":1.6, "FRGN":-1.5}, 4.0, 3, "auto")
+]
+
+# Legacy / Standard automatic macro letters
 SHOCK = [
     ("RBI Holds Key Rates; Tech Spending Surge Offset by EV Subsidy Cut Concerns", 
      "Banking & Financial Services, Technology & Telecom, Automobile & EV", 1, 3, 
@@ -39,26 +77,10 @@ SHOCK = [
      
     ("FinTech Regulation Tightens as Telecom Operators Expand 5G Enterprise Services", 
      "Banking & Financial Services, Technology & Telecom", 1, 3, 
-     {"AURB":1.3, "MRDN":1.1, "NVTL":1.3, "QBIT":1.2}, 3.2, 4),
-     
-    ("Infrastructure Spending Boom Triggers Industrial Metal Shortage", 
-     "Infrastructure, Metals & Manufacturing, Commodity-Linked", 1, 3, 
-     {"BLDX":1.5, "FRGN":1.4, "INMT":1.6, "GOLD":0.8}, 3.8, 4),
-     
-    ("Healthcare Modernization Grant Announced; EV Battery Cost Breakthrough Reported", 
-     "Healthcare & Pharma, Automobile & EV", 1, 3, 
-     {"HLXA":1.5, "CRBY":1.3, "VOLT":1.3, "EVRA":1.5}, 3.5, 4),
-     
-    ("Central Banks Boost Gold Reserves Amid Crude Stabilization", 
-     "Commodity-Linked, Banking & Financial Services", 1, 3, 
-     {"GOLD":1.7, "AURB":1.1, "MRDN":1.1, "CRUD":-0.3}, 3.2, 4),
-     
-    ("Global Green Energy Accord Signed; Tech Offshoring Demand Soars", 
-     "Energy & Renewables, Technology & Telecom", 1, 3, 
-     {"SOLR":1.6, "NVTL":1.4, "QBIT":1.3, "PTRX":0.5}, 3.6, 4)
+     {"AURB":1.3, "MRDN":1.1, "NVTL":1.3, "QBIT":1.2}, 3.2, 4)
 ]
 
-TIMED = ["X01","X02","X03","X04","X05","X06","X07","X08"]
+TIMED = ["X01","X02","X03","X04"]
 
 # Round 1 Manual Release News Cards (3 per sector: 2 Positive, 1 Negative)
 SURP = [
@@ -126,11 +148,20 @@ def _add_news(c, lst, kind, pre):
         label = "Entire market" if ind_label is None or "Entire" in ind_label else ind_label
         syms = list(set(_syms(ind_label) + list(sens.keys() if sens else [])))
         
-        c.execute("INSERT OR REPLACE INTO news(id,kind,headline,descr,category,industry,symbols,direction,severity,impact,duration,sens) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-         (f"{pre}{k+1:02d}", kind, h, f"Simulated event: {h}. Affected Sectors: {label}.", "Macro" if "Entire" in label else "Sector", label, ",".join(syms), d, sev, imp, dur, json.dumps(sens) if sens else None))
+        c.execute("INSERT OR REPLACE INTO news(id,kind,headline,descr,category,industry,symbols,direction,severity,impact,duration,sens,release_t) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+         (f"{pre}{k+1:02d}", kind, h, f"Simulated event: {h}. Affected Sectors: {label}.", "Macro" if "Entire" in label else "Sector", label, ",".join(syms), d, sev, imp, dur, json.dumps(sens) if sens else None, None))
 
 def seed_news(c):
-    c.execute("DELETE FROM news"); _add_news(c, SURP, "surprise", "S"); _add_news(c, SHOCK, "shock", "X"); _add_news(c, MEGA, "mega", "M")
+    c.execute("DELETE FROM news")
+    _add_news(c, SURP, "surprise", "S")
+    _add_news(c, SHOCK, "shock", "X")
+    _add_news(c, MEGA, "mega", "M")
+    
+    # Insert specific automated timed news releases (Minutes 3, 7, 11, 15, 19, 23, 27)
+    for k, t in enumerate(TIMED_NEWS):
+        release_t, h, label, explicit_syms, d, sev, sens, imp, dur, kind = t
+        c.execute("INSERT OR REPLACE INTO news(id,kind,headline,descr,category,industry,symbols,direction,severity,impact,duration,sens,release_t) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+         (f"T{k+1:02d}", kind, h, f"Scheduled cross-sector news: {h}. Affected: {label}.", "Sector", label, explicit_syms, d, sev, imp, dur, json.dumps(sens), release_t))
 
 def seed_market(c):
     rnd = random.Random(7)
@@ -142,16 +173,15 @@ def seed_market(c):
     seed_news(c)
 
 def assign_news_times(c, mode, seed=11):
-    c.execute("UPDATE news SET release_t=NULL,released=0,released_upd=NULL")
-    if mode=="test": c.execute("UPDATE news SET release_t=180 WHERE id=?",(TIMED[0],)); return
-    for k, i in enumerate(TIMED): c.execute("UPDATE news SET release_t=? WHERE id=?", (180+240*k, i))
+    # Timed news have explicit release_t baked in during seed_news.
+    # We assign Mega event release times here.
     c.execute("UPDATE news SET release_t=? WHERE id='M01'", (31*60,))
     c.execute("UPDATE news SET release_t=? WHERE id='M02'", (36*60,))
 
 def _defaults():
     return dict(status="idle",elapsed="0",run_since="0",upd="0",time_scale="1",brk_normal="0.10",capital="1000000",spectator_code="SPECTATE",reg_code="",auto_news="1",
         tick_sec="45",final_tick="30",final5_sec="600",test_sec="300",r1_sec="2400",trans_sec="60",pre_sec="600",brk_sec="60",news_sec="120",disc_sec="180",auc_sec="600",
-        window_sec="60",open_sec="30",r2_cash="10000000",r2_teams="5",lots_per_co="1",lot_bp="10000",newsletter_on="1",stage_cur="idle",hold_at="",cfg_ver="7",
+        window_sec="60",open_sec="30",r2_cash="10000000",r2_teams="5",lots_per_co="1",lot_bp="10000",newsletter_on="1",stage_cur="idle",hold_at="",cfg_ver="8",
         borrow_limit="3000000",borrow_fee_pct="5",borrow_pen="300000",swap_ttl="180",chart_epoch="0")
 
 def migrate(c):
@@ -161,15 +191,14 @@ def migrate(c):
     for k, v in _defaults().items():
         if D.get(c, k) is None: D.put(c, k, v)
     cv = D.get(c, "cfg_ver")
-    # Bumped cfg_ver to "7" to force database re-seeding on Render
-    if cv != "7":
+    # Bumped cfg_ver to "8" to force clean database re-seeding on Render
+    if cv != "8":
         seed_market(c)
         c.execute("DELETE FROM holdings"); c.execute("DELETE FROM orders"); c.execute("DELETE FROM leaderboard_snapshots")
         c.execute("UPDATE teams SET cash=?,brokerage=0,penalties=0,trades=0,prev_rank=0",(D.get(c,"capital"),))
         seed_news(c)
-        D.put(c,"cfg_ver","7")
-        if D.get(c,"status") in ("running","paused") and D.get(c,"stage_cur") in ("test","r1"): 
-            assign_news_times(c, D.get(c,"stage_cur"))
+        D.put(c,"cfg_ver","8")
+        assign_news(c) if 'assign_news' in globals() else assign_news_times(c, D.get(c,"stage_cur"))
 
 def seed(c, force=False):
     if not c.execute("SELECT COUNT(*) FROM companies").fetchone()[0] or force: seed_market(c)
