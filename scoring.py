@@ -24,16 +24,16 @@ def score(c, tid):
     ret = round(max(0.0, min(60.0, ret_score)), 2)
     
     # 2. Cash Management Points (Max 10 pts):
-    # 5% - 10% reserve -> 8 pts
-    # 11% - 20% reserve -> 5 pts
-    # Above 20% or below 5% -> 0 pts
+    # 5% - 10% reserve -> 9 pts
+    # 11% - 20% reserve -> 6 pts
+    # Above 20% or below 5% -> 3 pts
     cr = (t["cash"] / v) * 100
     if 5.0 <= cr <= 10.0:
-        cash = 8.0
+        cash = 9.0
     elif 11.0 <= cr <= 20.0:
-        cash = 5.0
+        cash = 6.0
     else:
-        cash = 0.0
+        cash = 3.0
         
     # 3. Diversification Points (Max 20 pts):
     # Starts at 0 before trading. Evaluated by max single-sector share of portfolio value.
@@ -62,11 +62,9 @@ def score(c, tid):
             
     # 4. Beta Points (Max 10 pts replacing Risk):
     # Default/starting point is 8 (Beta = 1.0). Scales based on portfolio beta performance relative to market index.
-    # Estimate portfolio beta from weighted average of company betas in holdings
     if holdings:
         total_holding_val = sum(h["price"] * h["qty"] for h in holdings)
         if total_holding_val > 0:
-            # Query company betas
             betas = {row["symbol"]: row["beta"] for row in c.execute("SELECT symbol, beta FROM companies").fetchall()}
             weighted_beta = sum((h["price"] * h["qty"] / total_holding_val) * betas.get(h["symbol"], 1.0) for h in holdings)
         else:
