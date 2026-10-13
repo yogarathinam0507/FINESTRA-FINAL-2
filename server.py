@@ -97,16 +97,23 @@ def enter_stage(n, prev, start):
 
 def market_tick(name, el, start, rel):
     tick, itick, ia, total = mcfg(name); upd = int(D.get(C, "upd")); ch = False
+    
+    # Process scheduled automatic or surprise news
     for n in C.execute("SELECT id,kind FROM news WHERE released=0 AND release_t IS NOT NULL AND release_t<=?", (rel,)).fetchall():
         C.execute("UPDATE news SET released=1,released_upd=? WHERE id=?", (upd, n["id"])); ch = True
         if n["kind"] in ("shock", "mega"): R2.SOUNDS.append("alert")
-        # IMMEDIATE PRICE SHOCK UPON AUTOMATIC/SCHEDULED NEWS RELEASE
         M.apply_news_shock(C, n["id"])
-    if name == "r1" and rel >= ia and D.get(C, "final5_on") != "1": D.put(C, "final5_on", "1"); R2.SOUNDS.append("warn"); ch = True
+
+    if name == "r1" and rel >= ia and D.get(C, "final5_on") != "1": 
+        D.put(C, "final5_on", "1"); R2.SOUNDS.append("warn"); ch = True
+
     due = schedule.due_updates(rel, tick, itick, ia, total)
     while upd < due:
-        upd += 1; D.put(C, "upd", upd); M.step(C, upd, factor=math.sqrt(itick / tick) if name == "r1" and schedule.is_intraday_update(upd, tick, ia) else 1.0); ch = True
-        for i, r in enumerate(S.leaderboard(C), 1): C.execute("UPDATE teams SET prev_rank=? WHERE id=?", (i, r["id"]))
+        upd += 1; D.put(C, "upd", upd)
+        M.step(C, upd, factor=math.sqrt(itick / tick) if name == "r1" and schedule.is_intraday_update(upd, tick, ia) else 1.0)
+        ch = True
+        for i, r in enumerate(S.leaderboard(C), 1): 
+            C.execute("UPDATE teams SET prev_rank=? WHERE id=?", (i, r["id"]))
         C.execute("INSERT INTO leaderboard_snapshots(upd,data) VALUES(?,?)", (upd, json.dumps(S.leaderboard(C))))
     return ch
 
@@ -357,6 +364,7 @@ async def event(action: str, b: dict, req: Request):
     elif action == "release":
         # IMMEDIATE PRICE SHOCK UPON MANUAL EVENT RELEASE
         nid = b.get("id")
+        if not nid: raise HTTPException(400, "News ID is required")
         C.execute("UPDATE news SET released=1,released_upd=? WHERE id=? AND released=0", (int(D.get(C, "upd")), nid))
         M.apply_news_shock(C, nid)
         R2.SOUNDS.append("alert")
