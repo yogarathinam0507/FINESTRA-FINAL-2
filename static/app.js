@@ -77,7 +77,23 @@ async function loadData(){
     if(role=='organizer')j.push(orgData());
     await Promise.all(j);
 }
-function connect(){ws=new WebSocket((location.protocol=='https:'?'wss://':'ws://')+location.host+'/ws');ws.onmessage=m=>{const d=JSON.parse(m.data);if(d.type=='restart')toast('Event restarted');refresh()};ws.onclose=()=>setTimeout(connect,1500);ws.onopen=()=>ws.send('hi')}
+function connect(){
+    ws = new WebSocket((location.protocol=='https:'?'wss://':'ws://')+location.host+'/ws');
+    ws.onmessage = m => {
+        const d = JSON.parse(m.data);
+        if(d.type=='restart') toast('Event restarted');
+        
+        // Refresh state and UI
+        refresh();
+        
+        // If a stock chart is currently open, sync it immediately with the latest server candles & prices
+        if (typeof CH !== 'undefined' && CH.sym && typeof chartSync === 'function') {
+            chartSync(false); // incremental sync or full refresh
+        }
+    };
+    ws.onclose = () => setTimeout(connect, 1500);
+    ws.onopen = () => ws.send('hi');
+}
 setInterval(()=>{if(tok)refresh()},5000);
 const evt=()=>S.status=='running'?S.elapsed0+(Date.now()-S.t0)/1000*S.scale:S.elapsed0,rem=x=>Math.max(0,(x-evt())/(S.scale||1));
 let lastTk={};const setT=(s,t)=>{const e=$(s);if(e&&e.textContent!==t)e.textContent=t};
