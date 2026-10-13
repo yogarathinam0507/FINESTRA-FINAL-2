@@ -28,7 +28,7 @@ async function api(p,b,m){
 }
 
 function logout(){const t=localStorage.th,m=localStorage.mute;tok='';role='';localStorage.clear();localStorage.th=t;if(m)localStorage.mute=m;location.href='/'}
-const themeBtn=()=>'<button class="g" onclick="toggleTheme()">◐ Theme</button>',soundBtn=()=>`<button class="g" title="Sound on/off" onclick="toggleSound()">${SND.on?'🔊':'🔇'}</button>`;
+const themeBtn=()=>'<button class="g" onclick="toggleTheme()">◐ Theme</button>';
 
 // ---------- landing ----------
 function landing(which){
@@ -77,7 +77,7 @@ async function loadData(){
     if(role=='organizer')j.push(orgData());
     await Promise.all(j);
 }
-function connect(){ws=new WebSocket((location.protocol=='https:'?'wss://':'ws://')+location.host+'/ws');ws.onmessage=m=>{const d=JSON.parse(m.data);(d.sounds||[]).forEach(snd);if(d.type=='restart')toast('Event restarted');refresh()};ws.onclose=()=>setTimeout(connect,1500);ws.onopen=()=>ws.send('hi')}
+function connect(){ws=new WebSocket((location.protocol=='https:'?'wss://':'ws://')+location.host+'/ws');ws.onmessage=m=>{const d=JSON.parse(m.data);if(d.type=='restart')toast('Event restarted');refresh()};ws.onclose=()=>setTimeout(connect,1500);ws.onopen=()=>ws.send('hi')}
 setInterval(()=>{if(tok)refresh()},5000);
 const evt=()=>S.status=='running'?S.elapsed0+(Date.now()-S.t0)/1000*S.scale:S.elapsed0,rem=x=>Math.max(0,(x-evt())/(S.scale||1));
 let lastTk={};const setT=(s,t)=>{const e=$(s);if(e&&e.textContent!==t)e.textContent=t};
@@ -87,16 +87,11 @@ function warnOverlay(run){
     if(!o){o=document.createElement('div');o.id='warnov';document.body.appendChild(o)}
     const T={event:['⚡','SURPRISE MARKET EVENT INCOMING','event'],mega:['🚨','MEGA EVENT INCOMING','mega']}[ev.type];
     o.className='warnov '+T[2];o.style.display='flex';const h=`<div><span>${T[0]}</span> ${T[1]}</div><b>${Math.ceil(ev.d)}</b>`;if(o.innerHTML!==h)o.innerHTML=h;
-    const k=ev.type+ev.at;if(lastTk.w!=k){lastTk.w=k;snd(ev.type=='mega'?'alert':'warn')}
 }
 setInterval(()=>{
     if(!S.stage||!S.t0)return;const run=S.status=='running';warnOverlay(run);
     setT('#sc',mm(rem(S.stage_end)));setT('#pc',mm(rem(S.phase_end)));setT('#tb',mm(rem(S.stage_end)));setT('#tm','Time '+mm(evt()/(S.scale||1))+' / '+mm(S.total/(S.scale||1)));
     if(S.next_at!=null){setT('#nx','Next update '+mm(rem(S.next_at)));setT('#nx2',mm(rem(S.next_at)))}
-    if(R&&R.window&&R.window.status=='active')setT('#wcd',mm(rem(R.window.deadline)));
-    if(R&&R.auction){const a=R.auction;if(a.status=='open')setT('#aex',mm(rem(a.expires)));
-    if(a.status=='countdown'){const x=Math.min(10,Math.max(0,Math.ceil(rem(a.cd_end))));setT('#acd',x);const k=a.id+':'+x;if(run&&x>0&&lastTk.a!=k){lastTk.a=k;snd('tick')}}}
-    const sr=rem(S.stage_end);if(run&&['test','r1','a3'].includes(S.stage)&&sr>0&&sr<=10){const x=Math.ceil(sr);if(lastTk.s!=S.stage+x){lastTk.s=S.stage+x;snd('tick')}}
 },250);
 
 // ---------- header ----------
@@ -104,7 +99,7 @@ function head(extra){
     const s=S,r1=['test','r1'].includes(s.stage)&&s.status!='idle';
     return `<header><b>FINestra</b><span class="pill">@Doms, AU</span><span class="pill gold">${esc(s.label||'')}</span>${s.status!='idle'&&s.stage!='ended'&&!s.waiting?`<span class="pill cd" id="sc">${mm(s.stage_remaining/(s.scale||1))}</span>`:''}<span class="pill">${s.status=='paused'?'⏸ PAUSED':(s.status||'').toUpperCase()}</span>
     ${r1?`<span class="pill">Update #${s.update}/${s.max_update}</span><span class="pill">Every ${s.interval}s</span><span class="pill cd ${s.final5?'gold':''}" id="nx">Next update ${s.next_update_in==null?'--':mm(s.next_update_in/(s.scale||1))}</span><span class="pill">Index ${s.index}</span>`:''}
-    <span class="pill" id="tm">Time ${mm((s.elapsed||0)/(s.scale||1))} / ${mm((s.total||0)/(s.scale||1))}</span><span class="sp"></span>${extra||''}${soundBtn()}${themeBtn()}<button class="g" onclick="logout()">Logout</button></header>
+    <span class="pill" id="tm">Time ${mm((s.elapsed||0)/(s.scale||1))} / ${mm((s.total||0)/(s.scale||1))}</span><span class="sp"></span>${extra||''}${themeBtn()}<button class="g" onclick="logout()">Logout</button></header>
     ${s.stage=='test'?`<div class="bar test">TEST ROUND – <span id="tb">${mm(s.stage_remaining/(s.scale||1))}</span> · practice only: nothing here counts, all test data is wiped when Round 1 begins</div>`:''}
     ${s.stage=='r1'&&s.final5?'<div class="bar final">⚠ FINAL 10 MINUTES – FAST TRADING MODE · prices change every 30 seconds · no regular news · MEGA events at 31:00 and 36:00</div>':''}
     ${s.status=='paused'?'<div class="bar" style="background:#ff9f1a;color:#000">EVENT PAUSED BY ORGANIZER</div>':''}`;
@@ -250,5 +245,9 @@ function render(){
     if(R2LIVE.includes(st))return role=='team'?r2TeamView():r2SpecView();
     return role=='team'?teamView():specView();
 }
-async function boot(){if(!tok)return landing();try{await api('me')}catch(e){return landing()}
- connect();refresh()}
+async function boot(){
+    if(!tok)return landing();
+    try{await api('me')}catch(e){return landing()}
+    connect();
+    refresh();
+}
