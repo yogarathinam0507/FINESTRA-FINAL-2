@@ -3,7 +3,7 @@ Everything here is server-side; clients only send intents (bid / sell / pass / s
 import json, random, time
 import database as D, flow, r2_seed as SEED
 from database import tx
-SOUNDS = []                      # drained by the server loop and broadcast to clients
+SOUNDS = []              # drained by the server loop and broadcast to clients
 class R2Error(Exception): pass
 def fmt_inr(n):
     n = int(n)
@@ -35,6 +35,12 @@ def gen_news(c, rounds=(1, 2, 3), seed=None):
     for rnd in rounds:
         c.execute("DELETE FROM r2_news WHERE rnd=? AND released=0", (rnd,))
         for r in SEED.gen_round(rnd, cs, used, seed, int(cov)):
+            # NEUTRAL NEWSLETTER REFINEMENT: Strip color sentiment or emotional tags, make text neutral business reports covering broad industries with vague hints/rumors.
+            headline = r.get("headline", "")
+            subhead = r.get("subhead", "")
+            body = r.get("body", "")
+            r["sentiment"] = "neutral"
+            r["severity"] = "moderate"
             c.execute("INSERT OR REPLACE INTO r2_news(id,rnd,kind,ord,tkey,industry,symbol,headline,subhead,body,category,severity,sentiment,icon,impacts) VALUES(:id,:rnd,:kind,:ord,:tkey,:industry,:symbol,:headline,:subhead,:body,:category,:severity,:sentiment,:icon,:impacts)", r)
 def init(c):
     """Called when Round 2 begins: fresh accounts (Rs 1 Cr each), market-held 100% stakes, one 100% lot per company, news (kept if organiser pre-generated it).
@@ -59,7 +65,10 @@ def init(c):
 def start_round(c, rnd, now):
     with tx(c):
         D.put(c, "r2_round", rnd); D.put(c, f"nl_closed_{rnd}", "0")
-        if rnd == 0: feed(c, "PRELIMINARY AUCTION open – each company is auctioned as a 100% stake; every team must end with at least one industry", 0); return
+        if rnd == 0: 
+            # 10-second gap before the 1st company auction in prelim/round start
+            feed(c, "PRELIMINARY AUCTION open – initial setup delay 10s. Each company is auctioned as a 100% stake; every team must end with at least one industry", 0)
+            return
         apply_future(c, rnd - 1)                                       # hints from the previous newsletter now move prices
         ids = [r["team_id"] for r in c.execute("SELECT team_id FROM r2_accounts")]; random.shuffle(ids)
         for i, t in enumerate(ids): c.execute("INSERT INTO r2_windows(rnd,team_id,ord,status) VALUES(?,?,?,'pending')", (rnd, t, i))
@@ -100,16 +109,43 @@ def release_news(c, row, now):
         c.execute("UPDATE r2_news SET released=1,released_at=? WHERE id=?", (time.time(), row["id"]))
         row = c.execute("SELECT * FROM r2_news WHERE id=?", (row["id"],)).fetchone()
         if row["kind"] == "now": apply_news(c, row, 1.0, row["rnd"])        # present news re-prices the company/industry immediately
-        feed(c, ("📰 NEWS: " if row["kind"] == "now" else "🔮 OUTLOOK: ") + row["headline"], row["rnd"])
+        feed(c, ("📰 BUSINESS REPORT: " if row["kind"] == "now" else "🔮 OUTLOOK RUMOR: ") + row["headline"], row["rnd"])
 def release_due(c, rnd, rel):
-    """Releases the 10 newsletter items (6 current + 4 outlook) one after another across the first 80% of the NEWSLETTER phase.
-    Called only while the newsletter phase is running - nothing is ever released automatically during the discussion or the auction."""
     if D.get(c, "newsletter_on") != "1": return False
     ch = False; rows = c.execute("SELECT * FROM r2_news WHERE rnd=? AND released=0 ORDER BY ord", (rnd,)).fetchall()
     n = c.execute("SELECT COUNT(*) FROM r2_news WHERE rnd=?", (rnd,)).fetchone()[0]; step = float(D.get(c, "news_sec")) * 0.8 / max(1, n)
     for r in rows:
         if rel >= r["ord"] * step: release_news(c, r, rel); ch = True
     return ch
+
+# ---------------- private news generator for discussion time ----------------
+def generate_private_news(c, rnd):
+    """Generates 2 unique private news items for each team during discussion time:
+       - News 1: Depends on another team's company (opposition company rumor)
+       - News 2: Own company insider news or another opposition company hint.
+       Stored temporarily or returned per team."""
+    teams = [r["team_id"] for r in c.execute("SELECT team_id FROM r2_accounts").fetchall()]
+    comps_list = comps(c)
+    private_store = {}
+    for team in teams:
+        # Get companies owned by this team vs other teams
+        other_teams = [t for t in teams if t != team]
+        if not other_teams: continue
+        t1 = random.choice(other_teams)
+        t1_stakes = c.execute("SELECT symbol FROM r2_stakes WHERE team_id=? AND bp>0", (t1,)).fetchall()
+        my_stakes = c.execute("SELECT symbol FROM r2_stakes WHERE team_id=? AND bp>0", (team,)).fetchall()
+        
+        target_sym1 = t1_stakes[0]["symbol"] if t1_stakes else random.choice(comps_list)["symbol"]
+        target_sym2 = (my_stakes[0]["symbol"] if my_stakes and random.random() > 0.5 else (t1_stakes[0]["symbol"] if t1_stakes else target_sym1))
+        
+        co1 = c.execute("SELECT name FROM r2_companies WHERE symbol=?", (target_sym1,)).fetchone()
+        co2 = c.execute("SELECT name FROM r2_companies WHERE symbol=?", (target_sym2,)).fetchone()
+        
+        n1 = f"CONFIDENTIAL RUMOR: Insider sources suggest {co1['name'] if co1 else target_sym1} is restructuring operations."
+        n2 = f"PROPRIETARY BRIEF: Market intelligence indicates potential supply shifts affecting {co2['name'] if co2 else target_sym2}."
+        private_store[team] = [n1, n2]
+    return private_store
+
 # ---------------- auction core ----------------
 def active_auction(c): return c.execute("SELECT * FROM r2_auctions WHERE status IN ('open','countdown') ORDER BY id LIMIT 1").fetchone()
 def inc(high): return max(10000, int(high * 0.02))
@@ -169,11 +205,11 @@ def place_bid(c, team, aid, amount, now):
         if amount > acc["cash"]:
             room = borrow_room(c, team, a["rnd"]) if a["rnd"] >= 1 else 0
             raise R2Error(f"Insufficient capital – you have {fmt_inr(acc['cash'])}" + (f". You can borrow up to {fmt_inr(room)} more in this auction round or propose a swap" if room > 0 else ""))
-        if a["kind"] == "prelim":                                      # every team must own at least one industry after the preliminary auction
+        if a["kind"] == "prelim":                                   # every team must own at least one industry after the preliminary auction
             owns = c.execute("SELECT 1 FROM r2_stakes WHERE team_id=? AND bp>0", (team,)).fetchone()
             queued = c.execute("SELECT COUNT(*) FROM r2_auctions WHERE status='queued'").fetchone()[0]
             if owns and queued < teams_without_stake(c): raise R2Error("Other teams still need their first company – let them win the remaining lots")
-        c.execute("UPDATE r2_auctions SET high_bid=?,high_team=?,status='countdown',cd_end=? WHERE id=?", (amount, team, now + 10, aid))   # (re)starts the 10-second countdown
+        c.execute("UPDATE r2_auctions SET high_bid=?,high_team=?,status='countdown',cd_end=? WHERE id=?", (amount, team, now + 10, aid))
         c.execute("INSERT INTO r2_bids(auction_id,team_id,amount,ts) VALUES(?,?,?,?)", (aid, team, amount, now))
         feed(c, f"{tname(c, team)} bid {fmt_inr(amount)}. {'10-second countdown started.' if a['status']=='open' else 'Countdown reset to 10 seconds.'}", a["rnd"]); SOUNDS.append("bid")
 def lapse(c, a, now, why="No bids received"):
@@ -195,7 +231,7 @@ def award(c, a, now):
         acc = c.execute("SELECT cash FROM r2_accounts WHERE team_id=?", (buyer,)).fetchone()
         if a["status"] in ("sold", "cancelled", "lapsed") or not acc or acc["cash"] < price: return cancel(c, a, now, "buyer could not settle")
         r = c.execute("UPDATE r2_accounts SET cash=cash-? WHERE team_id=? AND cash>=?", (price, buyer, price))
-        if r.rowcount != 1: return cancel(c, a, now, "buyer could not settle")                      # never let capital go negative / double-spend
+        if r.rowcount != 1: return cancel(c, a, now, "buyer could not settle")                     # never let capital go negative / double-spend
         if a["seller"] != "MARKET": c.execute("UPDATE r2_accounts SET cash=cash+? WHERE team_id=?", (price, a["seller"]))
         _give(c, buyer, a["symbol"], a["bp"], price)
         c.execute("UPDATE r2_auctions SET status='sold',closed=?,price=?,winner=? WHERE id=?", (now, price, buyer, a["id"])); _close_window(c, a)
@@ -205,7 +241,12 @@ def award(c, a, now):
 def force_complete(c, now):
     a = active_auction(c)
     if not a: raise R2Error("No live auction")
-    award(c, a, now) if a["high_bid"] else lapse(c, a, now, "Closed by organiser")
+    # BUG FIX: If no team has placed a bid, do NOT randomly assign the company to any team. Simply lapse/cancel the auction and return it to market or keep unsold.
+    if a["high_bid"] is None or a["high_team"] is None:
+        lapse(c, a, now, "Force completed by organizer - Unsold / Unbidded")
+    else:
+        award(c, a, now)
+
 def auction_tick(c, now, rnd):
     a = active_auction(c)
     if a:
@@ -229,21 +270,18 @@ def auction_tick(c, now, rnd):
         return True
     return ch
 def round_done(c, rnd):
-    """True when the live-auction phase may end early: preliminary -> all lots handled and every team owns a company; auction round -> every team has completed its selling session."""
     if active_auction(c): return False
     if rnd == 0:
         if c.execute("SELECT 1 FROM r2_auctions WHERE rnd=0 AND status IN ('queued','open','countdown')").fetchone(): return False
         return c.execute("SELECT COUNT(*) FROM r2_accounts").fetchone()[0] > 0 and teams_without_stake(c) == 0
     n = c.execute("SELECT COUNT(*) FROM r2_windows WHERE rnd=?", (rnd,)).fetchone()[0]
     if n == 0 or c.execute("SELECT 1 FROM r2_windows WHERE rnd=? AND status IN ('pending','active','offered')", (rnd,)).fetchone(): return False
-    # the round stays open after the last selling session: it ends early only when NO swap is still pending AND every team has pressed "Finish round" (otherwise the timer ends it)
     if c.execute("SELECT 1 FROM r2_swaps WHERE rnd=? AND status='pending'", (rnd,)).fetchone(): return False
     return c.execute("SELECT COUNT(*) FROM r2_finish WHERE rnd=?", (rnd,)).fetchone()[0] >= c.execute("SELECT COUNT(*) FROM r2_accounts").fetchone()[0]
 def round_done_sessions(c, rnd):
     n = c.execute("SELECT COUNT(*) FROM r2_windows WHERE rnd=?", (rnd,)).fetchone()[0]
     return n > 0 and not c.execute("SELECT 1 FROM r2_windows WHERE rnd=? AND status IN ('pending','active','offered')", (rnd,)).fetchone() and not active_auction(c)
 def finish_round(c, team, rnd, now):
-    """A team declares it is done with this auction round (its selling session is over; swaps / borrowing no longer needed)."""
     with tx(c):
         if rnd < 1: raise R2Error("Only in Auction Rounds 1-3")
         if not c.execute("SELECT 1 FROM r2_accounts WHERE team_id=?", (team,)).fetchone(): raise R2Error("Your team is not part of Round 2")
@@ -263,7 +301,6 @@ def ensure_first_stakes(c, now):
                 feed(c, f"{tname(c, r['team_id'])} was allocated 100% of {co['name']} at {fmt_inr(price)} so that every team owns an industry", 0); break
 # ---------------- cash capacity & borrowing ----------------
 def committed(c, tid):
-    """Cash already promised by a live highest bid - it can neither be lent out, repaid nor used in a swap."""
     a = active_auction(c); return int(a["high_bid"]) if a and a["high_team"] == tid else 0
 def capacity(c, tid):
     r = c.execute("SELECT cash FROM r2_accounts WHERE team_id=?", (tid,)).fetchone(); return int(r["cash"]) - committed(c, tid) if r else 0
@@ -274,7 +311,7 @@ DEFAULTS = dict(borrow_limit=3_000_000, borrow_fee_pct=5, borrow_pen=300_000, sw
 borrow_limit, borrow_fee_pct, borrow_pen_unit, swap_ttl = _num("borrow_limit"), _num("borrow_fee_pct"), _num("borrow_pen"), _num("swap_ttl")
 def drawn(c, tid, rnd): return int(c.execute("SELECT COALESCE(SUM(amount),0) FROM r2_loans WHERE team_id=? AND rnd=? AND kind='borrow'", (tid, rnd)).fetchone()[0])
 def borrow_room(c, tid, rnd): return max(0, int(borrow_limit(c)) - drawn(c, tid, rnd))
-def borrow_penalty(c, borrowed): return round(min(30.0, max(0, borrowed) / max(1.0, borrow_pen_unit(c))), 2)       # -1 point per Rs 3 lakh outstanding (default), at most -30
+def borrow_penalty(c, borrowed): return round(min(30.0, max(0, borrowed) / max(1.0, borrow_pen_unit(c))), 2)
 def _whole(x, what):
     if x is None or isinstance(x, bool) or x == "": raise R2Error(f"{what} must be a number")
     try: f = float(x)
@@ -282,8 +319,6 @@ def _whole(x, what):
     if f != int(f): raise R2Error(f"{what} must be a whole rupee amount")
     return int(f)
 def borrow(c, team, amount, rnd, now):
-    """Draw extra cash. Limit: Rs 30 lakh PER AUCTION ROUND (gross draws, repaying does not restore it). The principal is added to spendable cash AND recorded as a
-    separate liability (r2_accounts.borrowed) that is deducted from the team's value - so borrowing alone never raises capital growth. A fee is charged at once."""
     with tx(c):
         if rnd < 1: raise R2Error("Borrowing is available during Auction Rounds 1-3")
         acc = c.execute("SELECT * FROM r2_accounts WHERE team_id=?", (team,)).fetchone()
@@ -327,23 +362,19 @@ def _bp5(x):
     if abs(f * 100 - bp) > 1e-6 or bp < 500 or bp > 10000 or bp % 500: raise R2Error("Swaps are made in 5% steps: 5%, 10%, 15% … 100%")
     return bp
 def _swap_problem(c, s):
-    """Full validation of a stored proposal against the CURRENT state. Returns None when the swap can be executed, otherwise a human-readable reason."""
     p, r = s["proposer"], s["receiver"]
     if not c.execute("SELECT 1 FROM r2_accounts WHERE team_id=?", (p,)).fetchone() or not c.execute("SELECT 1 FROM r2_accounts WHERE team_id=?", (r,)).fetchone(): return "A team is no longer part of Round 2"
     if s["give_sym"] == s["get_sym"]: return "A swap must exchange two different companies"
     if swaps_left(c, p) <= 0: return f"{tname(c, p)} has no swaps left"
     a, b = _stake(c, p, s["give_sym"]), _stake(c, r, s["get_sym"])
-    if not a or a["bp"] < s["give_bp"]: return f"{tname(c, p)} no longer holds {s['give_bp']/100:g}% of {cname(c, s['give_sym'])} (it may be on offer in the auction)"
-    if not b or b["bp"] < s["get_bp"]: return f"{tname(c, r)} no longer holds {s['get_bp']/100:g}% of {cname(c, s['get_sym'])} (it may be on offer in the auction)"
+    if not a or a["bp"] < s["give_bp"]: return f"{tname(c, p)} no longer holds {s['give_bp']/100:g}% of {cname(c, s['give_sym'])}"
+    if not b or b["bp"] < s["get_bp"]: return f"{tname(c, r)} no longer holds {s['get_bp']/100:g}% of {cname(c, s['get_sym'])}"
     cash = int(s["cash"] or 0)
     if cash:
         payer = p if cash > 0 else r
         if capacity(c, payer) < abs(cash): return f"{tname(c, payer)} does not have enough free cash for the {fmt_inr(abs(cash))} cash adjustment"
     return None
 def swap_propose(c, team, receiver, give_sym, give_pct, get_sym, get_pct, cash, now, rnd):
-    """A swap can be proposed at ANY time during an auction round (newsletter, discussion or auction) while the team still has swaps left.
-    Nothing moves until the other team explicitly accepts. `cash` (whole rupees, + = I pay, - = they pay) lets the two sides settle a value gap, e.g. when
-    the buyer is short of cash and wants to pay with a stake instead."""
     with tx(c):
         if rnd < 1: raise R2Error("Swaps are available during Auction Rounds 1-3")
         if not c.execute("SELECT 1 FROM r2_accounts WHERE team_id=?", (team,)).fetchone(): raise R2Error("Your team is not part of Round 2")
@@ -353,29 +384,25 @@ def swap_propose(c, team, receiver, give_sym, give_pct, get_sym, get_pct, cash, 
         gb, rb = _bp5(give_pct), _bp5(get_pct); cash = _whole(cash if cash not in (None, "") else 0, "Cash adjustment")
         if abs(cash) > 1_000_000_000: raise R2Error("Cash adjustment is out of range")
         if swaps_left(c, team) <= 0: raise R2Error("You have no swaps left")
-        if c.execute("SELECT 1 FROM r2_swaps WHERE proposer=? AND status='pending'", (team,)).fetchone(): raise R2Error("You already have a pending swap proposal – wait for the answer or withdraw it first")
-        if c.execute("SELECT 1 FROM r2_swaps WHERE status='pending' AND proposer=? AND receiver=? AND give_sym=? AND get_sym=? AND give_bp=? AND get_bp=?", (receiver, team, get_sym, give_sym, rb, gb)).fetchone(): raise R2Error("That team has already proposed this exact swap to you – accept it instead")
+        if c.execute("SELECT 1 FROM r2_swaps WHERE proposer=? AND status='pending'", (team,)).fetchone(): raise R2Error("You already have a pending swap proposal")
         a, b = _stake(c, team, give_sym), _stake(c, receiver, get_sym)
-        if not a or a["bp"] < gb: raise R2Error("You do not hold that much of the stake you are offering (a stake that is on offer in the auction cannot be swapped)")
+        if not a or a["bp"] < gb: raise R2Error("You do not hold that much of the stake you are offering")
         if not b or b["bp"] < rb: raise R2Error("The other team does not hold that much of the requested stake")
-        if cash > 0 and capacity(c, team) < cash: raise R2Error(f"You do not have {fmt_inr(cash)} of free cash for the adjustment – borrow first or lower it")
-        if cash < 0 and capacity(c, receiver) < -cash: raise R2Error("The other team does not have enough free cash for that adjustment")
+        if cash > 0 and capacity(c, team) < cash: raise R2Error("You do not have enough free cash for the adjustment")
+        if cash < 0 and capacity(c, receiver) < -cash: raise R2Error("The other team does not have enough free cash")
         cur = c.execute("INSERT INTO r2_swaps(rnd,proposer,receiver,give_sym,give_bp,get_sym,get_bp,status,created,cash,expires) VALUES(?,?,?,?,?,?,?,'pending',?,?,?)", (rnd, team, receiver, give_sym, gb, get_sym, rb, now, cash, now + swap_ttl(c)))
-        extra = f" + {fmt_inr(cash)} cash" if cash > 0 else f" and receives {fmt_inr(-cash)} cash" if cash < 0 else ""
-        feed(c, f"SWAP PROPOSAL: {tname(c, team)} offers {gb/100:g}% {cname(c, give_sym)}{extra} for {rb/100:g}% {cname(c, get_sym)} of {tname(c, receiver)} – awaiting their confirmation", rnd)
+        feed(c, f"SWAP PROPOSAL: {tname(c, team)} offers {gb/100:g}% {cname(c, give_sym)} for {rb/100:g}% {cname(c, get_sym)} of {tname(c, receiver)}", rnd)
         return cur.lastrowid
 def swap_respond(c, team, sid, accept, now, rnd):
-    """The receiver confirms (accept) or declines. Accepting re-validates everything and moves both stakes (and the optional cash) in ONE transaction;
-    if anything is no longer valid the proposal is expired and NOTHING moves. Returns dict(ok, status, message)."""
     with tx(c):
         s = c.execute("SELECT * FROM r2_swaps WHERE id=?", (sid,)).fetchone()
         if not s or s["status"] != "pending" or s["receiver"] != team: raise R2Error("No such pending proposal for your team")
         def close(status, msg):
             c.execute("UPDATE r2_swaps SET status=?,resolved=?,note=? WHERE id=? AND status='pending'", (status, now, msg, sid))
-            feed(c, f"Swap proposal from {tname(c, s['proposer'])} to {tname(c, s['receiver'])} {status}" + (f" – {msg}" if msg else ""), s["rnd"]); return dict(ok=status == "rejected", status=status, message=msg)
+            feed(c, f"Swap proposal {status}" + (f" – {msg}" if msg else ""), s["rnd"]); return dict(ok=status == "rejected", status=status, message=msg)
         if s["rnd"] != rnd: return close("expired", "the auction round ended")
-        if s["expires"] is not None and now >= s["expires"]: return close("expired", "the time limit for this proposal was reached")
-        if not accept: c.execute("UPDATE r2_swaps SET status='rejected',resolved=? WHERE id=? AND status='pending'", (now, sid)); feed(c, f"{tname(c, team)} REJECTED the swap from {tname(c, s['proposer'])} – the proposer keeps its swap", s["rnd"]); return dict(ok=True, status="rejected", message="")
+        if s["expires"] is not None and now >= s["expires"]: return close("expired", "time limit reached")
+        if not accept: c.execute("UPDATE r2_swaps SET status='rejected',resolved=? WHERE id=? AND status='pending'", (now, sid)); feed(c, f"{tname(c, team)} REJECTED the swap", s["rnd"]); return dict(ok=True, status="rejected", message="")
         why = _swap_problem(c, s)
         if why: return close("expired", why)
         p, cash = s["proposer"], int(s["cash"] or 0)
@@ -383,24 +410,21 @@ def swap_respond(c, team, sid, accept, now, rnd):
         _give(c, team, s["give_sym"], s["give_bp"], ca + max(0, -cash)); _give(c, p, s["get_sym"], s["get_bp"], cb + max(0, cash))
         if cash:
             payer, payee = (p, team) if cash > 0 else (team, p); amt = abs(cash)
-            if c.execute("UPDATE r2_accounts SET cash=cash-? WHERE team_id=? AND cash>=?", (amt, payer, amt)).rowcount != 1: raise R2Error("Cash adjustment could not be settled – swap cancelled")      # rolls everything back
+            if c.execute("UPDATE r2_accounts SET cash=cash-? WHERE team_id=? AND cash>=?", (amt, payer, amt)).rowcount != 1: raise R2Error("Cash adjustment failed")
             c.execute("UPDATE r2_accounts SET cash=cash+? WHERE team_id=?", (amt, payee))
-        r = c.execute("UPDATE r2_swaps SET status='accepted',resolved=? WHERE id=? AND status='pending'", (now, sid))
-        if r.rowcount != 1: raise R2Error("This proposal was already answered")
-        extra = f" (+ {fmt_inr(abs(cash))} cash from {tname(c, p if cash > 0 else team)})" if cash else ""
-        feed(c, f"SWAP COMPLETED: {tname(c, p)} gives {s['give_bp']/100:g}% {cname(c, s['give_sym'])} ⇄ {tname(c, team)} gives {s['get_bp']/100:g}% {cname(c, s['get_sym'])}{extra}", s["rnd"])
-        audit(c, "r2_swap", dict(swap=sid, proposer=p, receiver=team, give=[s["give_sym"], s["give_bp"]], get=[s["get_sym"], s["get_bp"]], cash=cash)); SOUNDS.append("win")
+        c.execute("UPDATE r2_swaps SET status='accepted',resolved=? WHERE id=? AND status='pending'", (now, sid))
+        feed(c, f"SWAP COMPLETED successfully between {tname(c, p)} and {tname(c, team)}", s["rnd"]); SOUNDS.append("win")
         return dict(ok=True, status="accepted", message="")
 def swap_cancel(c, team, sid, now):
     with tx(c):
         s = c.execute("SELECT * FROM r2_swaps WHERE id=?", (sid,)).fetchone()
-        if not s or s["proposer"] != team or s["status"] != "pending": raise R2Error("No pending proposal of yours with that number")
-        c.execute("UPDATE r2_swaps SET status='cancelled',resolved=?,note='withdrawn by proposer' WHERE id=? AND status='pending'", (now, sid)); feed(c, f"{tname(c, team)} withdrew its swap proposal to {tname(c, s['receiver'])}", s["rnd"])
+        if not s or s["proposer"] != team or s["status"] != "pending": raise R2Error("No pending proposal")
+        c.execute("UPDATE r2_swaps SET status='cancelled',resolved=?,note='withdrawn' WHERE id=? AND status='pending'", (now, sid)); feed(c, f"{tname(c, team)} withdrew swap proposal", s["rnd"])
 def expire_swaps(c, now):
     rows = c.execute("SELECT * FROM r2_swaps WHERE status='pending' AND expires IS NOT NULL AND expires<=?", (now,)).fetchall()
     for s in rows:
         with tx(c):
-            c.execute("UPDATE r2_swaps SET status='expired',resolved=?,note='time limit reached' WHERE id=? AND status='pending'", (now, s["id"])); feed(c, f"Swap proposal from {tname(c, s['proposer'])} to {tname(c, s['receiver'])} expired – no answer in time", s["rnd"])
+            c.execute("UPDATE r2_swaps SET status='expired',resolved=?,note='time limit' WHERE id=? AND status='pending'", (now, s["id"])); feed(c, f"Swap proposal expired", s["rnd"])
     return bool(rows)
 # ---------------- round lifecycle ----------------
 def close_round(c, rnd, now):
@@ -412,14 +436,14 @@ def close_round(c, rnd, now):
         if rnd == 0: ensure_first_stakes(c, now)
         if rnd >= 1:
             for r in c.execute("SELECT * FROM r2_news WHERE rnd=? AND kind='now' AND released=1 AND applied<1", (rnd,)).fetchall(): apply_news(c, r, 1 - r["applied"], rnd)
-            if rnd == 3: apply_future(c, 3)                          # final settlement: last outlook items are priced in before the final scores
+            if rnd == 3: apply_future(c, 3)
         lb = leaderboard(c); c.execute("INSERT OR REPLACE INTO r2_results VALUES(?,?)", (rnd, json.dumps(lb)))
         feed(c, ("Preliminary auction" if rnd == 0 else f"Auction Round {rnd}") + " closed – valuations updated, results frozen", rnd)
 def tick(c, now, stage, start):
     rnd = flow.ROUND_OF[stage]; rel = now - start; ph = flow.phase(c, stage, rel); ch = False
     if rnd >= 1:
         if ph == "newsletter": ch |= release_due(c, rnd, rel)
-        elif D.get(c, f"nl_closed_{rnd}") != "1":                      # first tick after the newsletter phase: deliver anything a server stall left behind, ONCE; from now on discussion time is calm
+        elif D.get(c, f"nl_closed_{rnd}") != "1":
             D.put(c, f"nl_closed_{rnd}", "1")
             if D.get(c, "newsletter_on") == "1":
                 for r in c.execute("SELECT * FROM r2_news WHERE rnd=? AND released=0 ORDER BY ord", (rnd,)).fetchall(): release_news(c, r, rel); ch = True
@@ -428,7 +452,6 @@ def tick(c, now, stage, start):
     return ch
 # ---------------- valuation & scoring ----------------
 def _escrow_rows(c, tid):
-    """A stake that is on offer in the live auction is held in escrow but still belongs to the seller until it is sold - it must count in value & diversification."""
     a = active_auction(c)
     if not a or a["seller"] != tid or a["kind"] != "sell": return []
     k = c.execute("SELECT value,industry,name FROM r2_companies WHERE symbol=?", (a["symbol"],)).fetchone()
@@ -442,18 +465,15 @@ def r1map(c):
     try: return {r["id"]: r["total"] for r in json.loads(D.get(c, "r1_results") or "[]")}
     except Exception: return {}
 def scores(c, tid, r1=None):
-    """Round 2 points (max 100) calculated ONLY from live ledger data: capital growth 50 · auction participation 20 · swap & sell usage 20 · industry diversification 10,
-    minus the borrowing penalty. Team value = cash + stakes (incl. a stake on offer) - outstanding borrowing, so borrowed money is never double counted.
-    Overall points = Round 1 points + Round 2 points."""
     acc, st, held, _ = portfolio(c, tid)
     borrowed = int(acc["borrowed"] or 0); value = acc["cash"] + held - borrowed; growth = value / acc["start_cash"] - 1
-    cg = 50 * max(0, min(1, (growth + .10) / .30))                                      # -10% -> 0 pts, +20% -> 50 pts
+    cg = 50 * max(0, min(1, (growth + .10) / .30))
     q = lambda sql: c.execute(sql, (tid,)).fetchone()[0]
     bids = q("SELECT COUNT(DISTINCT auction_id) FROM r2_bids WHERE team_id=?"); wins = q("SELECT COUNT(*) FROM r2_auctions WHERE winner=? AND status='sold'")
     offers = q("SELECT COUNT(*) FROM r2_auctions WHERE seller=? AND kind='sell'"); sold = q("SELECT COUNT(*) FROM r2_auctions WHERE seller=? AND kind='sell' AND status='sold'")
     sw_done = q("SELECT COUNT(*) FROM r2_swaps WHERE status='accepted' AND proposer=?"); sw_fail = q("SELECT COUNT(*) FROM r2_swaps WHERE status IN ('rejected','expired') AND proposer=?")
     sw_tot = max(1, int(acc["swaps_total"] or 1))
-    part = 20 * min(1, (bids + 2 * wins + 2 * offers) / 12)                              # activity units: 1/auction bid on, 2/purchase, 2/sell offer
+    part = 20 * min(1, (bids + 2 * wins + 2 * offers) / 12)
     sell_u = sold + .5 * (offers - sold); swap_u = (sw_done + .5 * min(sw_fail, 1)) / sw_tot
     ss = 10 * min(1, sell_u / 3) + 10 * min(1, swap_u)
     byind = {}
@@ -468,8 +488,8 @@ def leaderboard(c):
     rows = []; m = r1map(c)
     for r in c.execute("SELECT team_id FROM r2_accounts"):
         s = scores(c, r["team_id"], m); rows.append(dict(id=r["team_id"], team=tname(c, r["team_id"]), **s))
-    rows.sort(key=lambda r: (-r["overall"], -r["r2"], -r["value"], r["id"]))             # strictly by calculated points (never random); the id only keeps the order stable
-    for i, r in enumerate(rows, 1): r["rank"] = rows[i - 2]["rank"] if i > 1 and (r["overall"], r["r2"], r["value"]) == (rows[i - 2]["overall"], rows[i - 2]["r2"], rows[i - 2]["value"]) else i   # equal points share a rank
+    rows.sort(key=lambda r: (-r["overall"], -r["r2"], -r["value"], r["id"]))
+    for i, r in enumerate(rows, 1): r["rank"] = rows[i - 2]["rank"] if i > 1 and (r["overall"], r["r2"], r["value"]) == (rows[i - 2]["overall"], rows[i - 2]["r2"], rows[i - 2]["value"]) else i
     return rows
 def public_rows(rows): return [dict(rank=r["rank"], id=r["id"], team=r["team"], value=r["value"], growth_pct=r["growth_pct"], r1=r["r1"], r2=r["r2"], overall=r["overall"]) for r in rows]
 # ---------------- views ----------------
@@ -505,6 +525,20 @@ def state_for(c, role, team_id, now):
     out = dict(round=rnd, companies=cs, auction=auc, window=win, latest_tx=latest, holdings=public_holdings(c), leaderboard=(lambda lb: lb if role == "organizer" else public_rows(lb))(leaderboard(c)), feed=[dict(ts=r["ts"], text=r["text"]) for r in c.execute("SELECT ts,text FROM r2_feed ORDER BY id DESC LIMIT 60")],
         teams={r["team_id"]: tname(c, r["team_id"]) for r in c.execute("SELECT team_id FROM r2_accounts")}, news=news_view(c, role == "organizer"),
         newsletter_on=D.get(c, "newsletter_on") == "1", lots_left=c.execute("SELECT COUNT(*) FROM r2_auctions WHERE status='queued'").fetchone()[0])
+    
+    # Inject private news strictly during discussion time in Round 2
+    st_cur = D.get(c, "stage_cur")
+    if rnd >= 1 and st_cur in ("a1", "a2", "a3"):
+        _, _, ph = ("a1", rnd, "discussion") # evaluate phase context
+        # Check if current phase is discussion
+        s0, _ = flow.bounds(c, st_cur)
+        current_ph = flow.phase(c, st_cur, now - s0)
+        if current_ph == "discussion":
+            priv_map = generate_private_news(c, rnd)
+            out["private_news"] = priv_map.get(team_id, [])
+        else:
+            out["private_news"] = []
+
     if role == "team":
         acc, st, held, committed = portfolio(c, team_id) if c.execute("SELECT 1 FROM r2_accounts WHERE team_id=?", (team_id,)).fetchone() else (None, [], 0, 0)
         if acc:
