@@ -1,118 +1,272 @@
 // ===== ROUND 2 – Industry Titans: The Stake Auction (views) =====
-const PHN={newsletter:'NEWSLETTER / NEWS PROJECTION',discussion:'STRATEGY & DISCUSSION – bidding disabled',auction:'LIVE STAKE AUCTION'};
-const sg=n=>n.sentiment=='Positive'?'pos':n.sentiment=='Negative'?'neg':'mix',arrow=n=>n.sentiment=='Positive'?'▲':n.sentiment=='Negative'?'▼':'◆';
-function r2LB(rows,admin){return `<table><tr><th>Rank</th><th class="l">Team</th><th>Portfolio value</th><th>Growth</th>${admin?'<th>Capital growth /50</th><th>Participation /20</th><th>Swap &amp; Sell /20</th><th>Diversif. /10</th>':''}<th>Round 1 Points</th><th>Round 2 Points</th><th>Overall Points</th></tr>${rows.map(r=>`<tr style="${r.rank<=3?'font-weight:700;background:var(--bg)':''}"><td>${['🥇','🥈','🥉'][r.rank-1]||r.rank}</td><td class="l">${esc(r.team)}</td><td>${inr(r.value)}</td><td class="${cls(r.growth_pct)}">${r.growth_pct}\%</td>${admin&&r.parts?`<td>${r.parts.growth}</td><td>${r.parts.participation}</td><td>${r.parts.swap_sell}</td><td>${r.parts.diversification}</td>`:''}<td>${r.r1}</td><td>${r.r2}</td><td><b>${r.overall}</b></td></tr>`).join('')}</table>`}
-function newsCard(n){const c=sg(n),d=new Date((n.released_at||Date.now()/1000)*1000),co=(R.companies||[]).find(x=>x.symbol==n.symbol);
- return `<article class="pc ${c} ${n.kind=='future'?'fut':''}"><div class="top"><span>${n.icon} ${esc(n.industry)}</span>${n.kind=='future'?'<span class="chip on">OUTLOOK · NEXT ROUND</span>':''}<span>${esc(n.category)}</span><span>Severity ${'●'.repeat(n.severity)}${'○'.repeat(3-n.severity)}</span></div><h2>${esc(n.headline)}</h2><h4>${esc(n.subhead)}</h4><p>${esc(n.body)}</p>
- <div class="foot"><b>FINestra Financial Desk</b><span>${d.toLocaleDateString([], {day:'2-digit',month:'short',year:'numeric'})} · ${d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span><span class="sent ${c}">${arrow(n)} Sentiment: ${n.sentiment}</span><span>Company: ${esc(co?co.name:n.symbol)} (${n.symbol})</span></div></article>`}
-const roundNews=k=>(R.news||[]).filter(n=>n.rnd==S.round&&n.kind==k&&n.released).sort((a,b)=>a.ord-b.ord);
-function newspaper(){const a=roundNews('now'),f=roundNews('future');return `<div class="paper"><div class="mast"><small>FINESTRA FINANCIAL DESK · INDUSTRY TITANS EDITION · AUCTION ROUND ${S.round}</small><h1>THE FINESTRA FINANCIAL TIMES</h1><small>${a.length+f.length} / 10 items · ${a.length} / 6 current-round events · ${f.length} / 4 outlooks for the NEXT auction round</small></div>
- <h3 class="sec">📰 CURRENT NEWS – already reflected in today's valuations</h3><div class="papergrid">${a.map(newsCard).join('')||'<p>The newsletter is being prepared…</p>'}</div>
- <h3 class="sec">🔮 OUTLOOK – hints about what may move valuations in the NEXT auction round</h3><div class="papergrid">${f.map(newsCard).join('')||'<p>Outlook pieces arrive during the newsletter…</p>'}</div></div>`}
-function stageBanner(){const ph=S.phase;return `<div class="stage"><h2>${esc(S.label)}</h2><span class="chip on">${S.stage=='r2pre'?'PRELIMINARY AUCTION':PHN[ph]||ph}</span><div class="t" id="pc">${mm(Math.max(0,S.phase_end-S.elapsed)/(S.scale||1))}</div></div>`}
-function bump(n){const e=$('#bidamt');if(!e)return;e.value=n=='min'?R.auction.min_bid:(+e.value||R.auction.min_bid)+n;FORM.bidamt=e.value}
-async function bid(){try{await api('r2/bid',{auction_id:R.auction.id,amount:+$('#bidamt').value});delete FORM.bidamt;toast('Bid placed');await refresh()}catch(e){toast(e.message)}}
-function auctionPanel(big){const A=R.auction,meid=R.me&&R.me.team_id,ph=S.phase;
- if(!A)return `<div class="card live"><h3>LIVE AUCTION</h3><div class="big" style="color:var(--mut)">${ph!='auction'?'Auction opens after the discussion phase':R.window?esc(R.window.name)+' – selling window is open':S.stage=='r2pre'&&!R.lots_left?'Preliminary lots exhausted':'Waiting for the next offer…'}</div></div>`;
- const cd=A.status=='countdown',key=A.id+':'+A.min_bid;if(FORM._aid!==key){FORM._aid=key;delete FORM.bidamt}
- const can=role=='team'&&R.me&&R.me.participant&&meid!=A.seller&&meid!=A.high_team&&ph=='auction';
- return `<div class="card live ${cd?'hot':''}"><h3>LIVE AUCTION · ${A.kind=='prelim'?'Preliminary lot':'Team offer'} <span class="chip ${cd?'on':''}">${cd?'⏱ COUNTDOWN – going once…':'OPEN FOR BIDS'}</span></h3>
- <div class="big">${esc(A.company)} <small style="font-size:16px;color:var(--mut)">${esc(A.industry)}</small></div>
- <div class="kv"><div><span>Stake offered</span><b>${A.pct}%</b></div><div><span>Selling team</span><b>${esc(A.seller_name)}</b></div><div><span>Starting price</span><b>${inr(A.ask)}</b></div><div><span>Current highest bid</span><b>${A.high_bid?inr(A.high_bid):'—'}</b></div><div><span>Highest bidder</span><b>${A.high_name?esc(A.high_name):'—'}</b></div><div><span>Last bid</span><b>${A.last_bid?inr(A.last_bid)+' · '+esc(A.last_bid_team):'—'}</b></div><div><span>Indicative fair value</span><b>${inr(A.fair_value)}</b></div><div><span>Auction status</span><b>${cd?'Countdown':'Open – lapses in <span id="aex">'+mm(rem(A.expires))+'</span>'}</b></div></div>
- ${cd?`<div class="cdn" id="acd">${Math.min(10,Math.max(0,Math.ceil(rem(A.cd_end))))}</div><div style="text-align:center;color:var(--mut)">No higher bid before zero → stake is awarded to ${esc(A.high_name)}. Any higher bid resets the countdown to 10.</div>`:''}
- ${can?`<div class="row" style="margin-top:10px"><input id="bidamt" type="number" step="10000" value="${A.min_bid}" style="width:170px;font-size:18px"><button class="g" onclick="bump('min')">Min</button><button class="g" onclick="bump(50000)">+₹50K</button><button class="g" onclick="bump(100000)">+₹1L</button><button class="g" onclick="bump(500000)">+₹5L</button><button class="s" style="font-size:18px;padding:10px 26px" onclick="bid()">PLACE BID</button></div><small style="color:var(--mut)">Minimum next bid ${inr(A.min_bid)} · your buying capacity ${inr(R.me.capacity)}</small>${R.me.capacity<A.min_bid&&R.me.borrow_room>0&&R.me.can_act?`<div class="chip on" style="margin-top:8px">Short of cash by ${inr(A.min_bid-R.me.capacity)} – <a href="#" onclick="quickBorrow(${Math.min(R.me.borrow_room,Math.ceil((A.min_bid-R.me.capacity)/(1-R.me.borrow_fee_pct/100)/10000)*10000)});return false">borrow it now</a> or propose a swap below</div>`:''}`:role=='team'&&meid==A.high_team?'<div class="chip on" style="margin-top:10px">You are the highest bidder</div>':''}
- </div>`}
-function fillAsk(){const st=(R.me.stakes||[]).find(x=>x.symbol==$('#sl_sym').value);if(!st)return;const v=Math.round(st.value*((+$('#sl_pct').value\vert{}\vert{}0)/st.pct)/1000)*1000;$('#sl_ask').value=v;FORM.sl_ask=v}
-async function sellNow(){try{await api('r2/sell',{symbol:$('#sl_sym').value,pct:+$('#sl_pct').value,ask:+$('#sl_ask').value});delete FORM.sl_pct;delete FORM.sl_ask;toast('Offer is live');await refresh()}catch(e){toast(e.message)}}
-async function passNow(){try{await api('r2/pass',{});toast('You passed');await refresh()}catch(e){toast(e.message)}}
-function windowPanel(){const W=R.window,me=R.me;if(!W||S.phase!='auction'||S.stage=='r2pre')return '';
- if(W.status=='offered')return `<div class="window"><h2>${esc(W.name)} has offered a stake</h2>Bidding is open.</div>`;
- if(role=='team'&&me&&W.team==me.team_id){const st=me.stakes||[],s0=st[0];return `<div class="window"><h2>${esc(W.name)} – YOUR SELLING SESSION</h2><div>Decide within <b id="wcd">${mm(rem(W.deadline))}</b> – one selling session per auction round. You may <b>sell</b>, start a <b>swap</b> (below; swaps left ${me.swaps_left}/${me.swaps_total}) or pass. Stakes trade in 5% steps.</div>
-  <div class="row" style="justify-content:center;margin-top:8px"><select id="sl_sym" onchange="fillAsk()" style="width:auto">${st.map(x=>`<option value="${x.symbol}">${esc(x.company)} (${x.pct}% held)</option>`).join('')}</select><input id="sl_pct" type="number" step="5" min="5" max="100" value="${s0?Math.min(5,s0.pct):''}" oninput="fillAsk()" style="width:90px"><span>% stake (5% steps)</span><input id="sl_ask" type="number" step="10000" value="${s0?Math.round(s0.value*Math.min(5,s0.pct)/s0.pct/1000)*1000:''}" style="width:150px"><span>₹ starting price</span></div>
-  <div class="row" style="justify-content:center"><button class="s" style="font-size:18px;padding:10px 26px" onclick="sellNow()">OFFER FOR SALE</button><button class="g" style="font-size:18px;padding:10px 26px" onclick="passNow()">DONE / PASS</button></div></div>`}
- return `<div class="window"><h2>${esc(W.name)} – SELLING SESSION</h2>deciding… <b id="wcd">${mm(rem(W.deadline))}</b></div>`}
-const nm=sym=>((R.companies||[]).find(x=>x.symbol==sym)||{}).name||sym,val=(sym,pct)=>{const c=(R.companies||[]).find(x=>x.symbol==sym);return c?Math.round(c.value*pct/100):0};
-async function swapGo(){try{const d=+$('#sw_cd').value,amt=+($('#sw_ca').value||0);await api('r2/swap/propose',{receiver:$('#sw_to').value,give_symbol:$('#sw_g').value,give_pct:+$('#sw_gp').value,get_symbol:$('#sw_r').value,get_pct:+$('#sw_rp').value,cash:d*amt});['sw_gp','sw_rp','sw_ca'].forEach(k=>delete FORM[k]);toast('Swap proposed – waiting for the other team to confirm');await refresh()}catch(e){toast(e.message)}}
-async function swapAns(id,a){try{await api('r2/swap/'+id+'/'+a,{});toast(a=='accept'?'Swap completed – stakes transferred':a=='reject'?'Swap rejected':'Proposal withdrawn')}catch(e){toast(e.message)}await refresh()}
-function swSum(){const e=$('#sw_sum');if(!e)return;const g=val($('#sw_g').value,+$('#sw_gp').value||0),r=val($('#sw_r').value,+$('#sw_rp').value||0),c=(+$('#sw_cd').value)*(+$('#sw_ca').value||0);e.textContent=`You give ≈ ${inr(g)}${c>0?' + '+inr(c)+' cash':''} · you get ≈ ${inr(r)}${c<0?' + '+inr(-c)+' cash':''} (indicative values at today's valuations)`}
-function swapCard(w,me){const mine=w.proposer==me.team_id,st=w.status;
- return `<div class="flash" style="border-color:${st=='accepted'?'var(--up)':st=='pending'?'#ff9f1a':'var(--mut)'}"><div><b>${esc(w.proposer_name)}${mine?' (you)':''}</b> gives <b>${w.give_bp/100}% ${esc(nm(w.give_sym))}</b> (≈ ${inr(val(w.give_sym,w.give_bp/100))})${w.cash>0?' <b>+ '+inr(w.cash)+' cash</b>':''}<br>⇄ <b>${esc(w.receiver_name)}${!mine?' (you)':''}</b> gives <b>${w.get_bp/100}% ${esc(nm(w.get_sym))}</b> (≈ ${inr(val(w.get_sym,w.get_bp/100))})${w.cash<0?' <b>+ '+inr(-w.cash)+' cash</b>':''}<br>
- <span class="chip ${st=='pending'?'on':''}">${st.toUpperCase()}</span> ${w.note&&st!='accepted'?'<small style="color:var(--mut)">'+esc(w.note)+'</small>':''}
- ${st=='pending'&&!mine?`<button class="s" onclick="swapAns(${w.id},'accept')">ACCEPT</button> <button class="r" onclick="swapAns(${w.id},'reject')">REJECT</button>`:''}${st=='pending'&&mine?`<button class="g" onclick="swapAns(${w.id},'cancel')">WITHDRAW</button>`:''}</div></div>`}
-function swapPanel(){const me=R.me,sw=R.swaps||[],others=Object.entries(R.teams).filter(([id])=>id!=me.team_id),pend=sw.filter(w=>w.status=='pending'),mineP=pend.filter(w=>w.proposer==me.team_id);
- const to=others.some(([id])=>id==FORM.sw_to)?FORM.sw_to:(others[0]||[])[0],theirs=(R.holdings[to]||[]),ok=me.can_act&&me.swaps_left>0&&!mineP.length&&others.length&&(me.stakes||[]).length&&theirs.length;
- return `<div class="card"><h3>STAKE SWAP · swaps remaining: <b>${me.swaps_left} of ${me.swaps_total}</b> <span class="chip ${me.swaps_left>0?'on':''}">${me.swaps_left>0?'AVAILABLE':'ALL USED'}</span></h3>
- <small style="color:var(--mut)">Propose a swap at any time during an auction round. Nothing moves until the other team <b>confirms</b>; then both stakes change hands at once. Only a completed swap uses up one of your swaps. Stakes trade in 5% steps; a cash amount can settle a value gap (e.g. if you are short of cash). Proposals lapse after ${Math.round(me.swap_ttl/60*10)/10} min.${ok?'':' <b>'+(me.swaps_left<=0?'No swaps left.':mineP.length?'You already have a pending proposal.':!me.can_act?'Not available right now.':'Pick a team that holds a stake.')+'</b>'}</small>
- ${pend.filter(w=>w.receiver==me.team_id).map(w=>swapCard(w,me)).join('')}
- <div class="row" style="margin-top:8px"><span>I give</span><select id="sw_g" style="width:auto">${(me.stakes||[]).map(x=>`<option value="${x.symbol}">${esc(x.company)} (${x.pct}% held)</option>`).join('')||'<option value="">no stakes</option>'}</select><input id="sw_gp" type="number" step="5" min="5" max="100" placeholder="% I give" oninput="swSum()" style="width:90px"><b>⇄</b>
- <select id="sw_to" onchange="render()" style="width:auto">${others.map(([id,n])=>`<option value="${id}">${esc(n)}</option>`).join('')}</select><select id="sw_r" onchange="swSum()" style="width:auto">${theirs.map(x=>`<option value="${x.symbol}">${esc(x.company)} (${x.pct}% held)</option>`).join('')||'<option value="">no stakes</option>'}</select><input id="sw_rp" type="number" step="5" min="5" max="100" placeholder="% I get" oninput="swSum()" style="width:90px"></div>
- <div class="row"><span>Cash adjustment</span><select id="sw_cd" onchange="swSum()" style="width:auto"><option value="0">none</option><option value="1">I add cash</option><option value="-1">they add cash</option></select><input id="sw_ca" type="number" step="10000" min="0" placeholder="₹ amount" oninput="swSum()" style="width:140px"><button ${ok?'':'disabled'} onclick="swapGo()">PROPOSE SWAP</button></div><div id="sw_sum" style="font-size:12px;color:var(--mut);margin:4px 0"></div>
- ${sw.filter(w=>!(pend.includes(w)&&w.receiver==me.team_id)).slice(0,6).map(w=>swapCard(w,me)).join('')}</div>`}
-async function finishGo(){try{await api('r2/finish',{});toast('Marked as finished – waiting for the other teams');await refresh()}catch(e){toast(e.message)}}
-function finishPanel(){const f=R.finish||{done:0,total:0},pend=(R.swaps||[]).some(w=>w.status=='pending');
- return `<div class="card"><h3>FINISH ROUND <span class="chip ${f.me?'on':''}">${f.done} / ${f.total} teams ready</span></h3><small style="color:var(--mut)">The round stays open for swaps and borrowing even after all selling sessions are over. It ends when the timer runs out, or when every team has pressed <b>Finish round</b> and no swap is still pending.${f.sessions_over?'':' <b>Selling sessions are still running.</b>'}${pend?' <b>A swap is pending.</b>':''}</small><div class="row" style="margin-top:8px"><button ${f.me||!R.me.can_act?'disabled':''} onclick="finishGo()">${f.me?'✔ YOU FINISHED':'FINISH ROUND'}</button></div></div>`}
-async function borrowGo(){try{const r=await api('r2/borrow',{amount:+$('#bw_amt').value});delete FORM.bw_amt;toast('Borrowed '+inr(r.amount)+' (fee '+inr(r.fee)+')');await refresh()}catch(e){toast(e.message)}}
-async function repayGo(all){try{const m=R.me,amt=all?Math.min(m.borrowed,m.capacity):+$('#bw_rp').value;const r=await api('r2/repay',{amount:amt});delete FORM.bw_rp;toast('Repaid '+inr(r.amount));await refresh()}catch(e){toast(e.message)}}
-function bwSet(n){const e=$('#bw_amt');e.value=n;FORM.bw_amt=n}
-async function quickBorrow(n){try{const r=await api('r2/borrow',{amount:n});toast('Borrowed '+inr(r.amount)+' (fee '+inr(r.fee)+')');await refresh()}catch(e){toast(e.message)}}
-function borrowPanel(){const m=R.me,ok=m.can_act;
- return `<div class="card"><h3>EXTRA CASH · BORROWING <span class="chip ${m.borrowed>0?'on':''}">${m.borrowed>0?'OUTSTANDING '+inr(m.borrowed):'NO DEBT'}</span></h3>
- <div class="live"><div class="kv"><div><span>Spendable cash</span><b>${inr(m.cash)}</b></div><div><span>Outstanding borrowing</span><b class="${m.borrowed>0?'dn':''}">${inr(m.borrowed)}</b></div><div><span>Net cash after repaying</span><b>${inr(m.net_cash)}</b></div><div><span>Can still borrow this round</span><b>${inr(m.borrow_room)} <small>of ${inr(m.borrow_limit)}</small></b></div><div><span>Borrowing penalty</span><b class="${m.borrow_penalty>0?'dn':''}">−${m.borrow_penalty} pts</b></div><div><span>Fees paid</span><b>${inr(m.fees_paid)}</b></div></div></div>
- <small style="color:var(--mut)">Borrow up to ${inr(m.borrow_limit)} <b>per auction round</b> (multiples of ₹10,000). A ${m.borrow_fee_pct}% fee is charged on every draw. Borrowed money is a <b>liability</b>: your capital = cash + stakes − borrowing, so it never inflates your growth. Every ₹${fmtL(m.borrow_pen_unit)} still owed costs <b>1 point</b> (max 30). Repaying early removes the penalty but not the fee.</small>
- <div class="row" style="margin-top:8px"><input id="bw_amt" type="number" step="10000" min="10000" placeholder="₹ to borrow" style="width:150px"><button class="g" onclick="bwSet(500000)">+5 L</button><button class="g" onclick="bwSet(1000000)">+10 L</button><button class="g" onclick="bwSet(${m.borrow_room})">Max</button><button ${ok&&m.borrow_room>0?'':'disabled'} onclick="borrowGo()">BORROW</button>
- <span style="width:18px"></span><input id="bw_rp" type="number" step="10000" min="10000" placeholder="₹ to repay" style="width:150px"><button class="g" ${ok&&m.borrowed>0?'':'disabled'} onclick="repayGo(false)">REPAY</button><button class="g" ${ok&&m.borrowed>0?'':'disabled'} onclick="repayGo(true)">REPAY ALL</button></div>
- ${(m.loans||[]).length?`<table style="margin-top:8px"><tr><th>Round</th><th class="l">Type</th><th>Amount</th><th>Fee</th><th>Outstanding after</th></tr>${m.loans.map(l=>`<tr><td>${l.rnd}</td><td class="l">${l.kind=='borrow'?'Borrowed':'Repaid'}</td><td>${inr(l.amount)}</td><td>${l.fee?inr(l.fee):'–'}</td><td>${inr(l.outstanding)}</td></tr>`).join('')}</table>`:''}</div>`}
-const fmtL=n=>n>=1e5?(n/1e5)+' L':n.toLocaleString('en-IN');
-function stakeBoard(){const hs=R.holdings,me=R.me&&R.me.team_id,L=R.latest_tx,A=R.auction;
- return `<div class="card"><h3>TEAM STAKE BOARD – public holdings of every team</h3><div class="grid g3">${Object.entries(R.teams).map(([id,n])=>`<div class="tb ${id==me?'me':''}"><h4>${esc(n)}${id==me?' (you)':''}</h4>${(hs[id]||[]).map(x=>`<div class="st"><span>${esc(x.industry)}</span><b>${x.pct}%</b></div>`).join('')||'<small style="color:var(--mut)">No stakes yet</small>'}</div>`).join('')}</div>
- <div class="row" style="margin-top:10px"><span class="chip">Latest transaction: ${L?`${esc(L.seller)} → ${esc(L.buyer)} ·${L.pct}% ${esc(nm(L.symbol))} for${inr(L.price)}`:'none yet'}</span><span class="chip">Current highest bid: ${A&&A.high_bid?inr(A.high_bid)+' by '+esc(A.high_name)+' on '+A.pct+'% '+esc(A.company):'—'}</span></div></div>`}
-const feedBox=()=>`<div class="card"><h3>AUCTION ACTIVITY FEED</h3><div class="feed">${(R.feed||[]).map(f=>`<div><small>${new Date(f.ts*1000).toLocaleTimeString()}</small>${esc(f.text)}</div>`).join('')||'Nothing yet'}</div></div>`;
-const valTable=()=>`<div class="card"><h3>Company valuations (re-priced by news)</h3><table><tr><th class="l">Industry</th><th class="l">Company</th><th>Valuation</th><th>Since start</th></tr>${R.companies.map(x=>`<tr><td class="l">${x.icon}${esc(x.industry)}</td><td class="l">${esc(x.name)}</td><td>${inr(x.value)}</td><td class="${cls(x.change_pct)}">${x.change_pct>0?'+':''}${x.change_pct}%</td></tr>`).join('')}</table></div>`;
+const PHN = {newsletter: 'NEWSLETTER / NEWS PROJECTION', discussion: 'STRATEGY & DISCUSSION – bidding disabled', auction: 'LIVE STAKE AUCTION'};
+const sg = n => n.sentiment == 'Positive' ? 'pos' : n.sentiment == 'Negative' ? 'neg' : 'mix', arrow = n => n.sentiment == 'Positive' ? '▲' : n.sentiment == 'Negative' ? '▼' : '◆';
 
-function r2TeamView(){const me=R.me;if(!me||!me.participant)return r2SpecView(`<div class="bar" style="background:#7a5cff;color:#fff">Your team is not among the Round 2 finalists – you are watching as a spectator</div>`);
- const ph=S.phase,rows=me.stakes||[],kp=[['Available cash',inr(me.cash)],['Stakes value',inr(me.held)],['Portfolio value',inr(me.value)],['Capital growth',me.growth_pct+'%',me.growth_pct],['Round 1 Points',me.points.r1],['Round 2 Points',me.points.r2],['Overall Points',me.points.overall],['Swaps remaining',me.swaps_left+' / '+me.swaps_total],['Outstanding borrowing',inr(me.borrowed),me.borrowed>0?-1:null],['Borrowing penalty','−'+me.borrow_penalty+' pts',me.borrow_penalty>0?-1:null]];
- 
- // Private News Card rendered strictly during discussion phase
- let privNewsHtml = '';
- if(ph == 'discussion' && me.private_news && me.private_news.length > 0) {
-     privNewsHtml = `
-         <div class="card" style="border: 2px solid #ff9f1a; background: var(--paper); margin-bottom: 12px;">
-             <h3 style="color: #ff9f1a; margin-bottom: 6px;">🔒 CONFIDENTIAL PRIVATE INTELLIGENCE (Discussion Phase)</h3>
-             <p style="font-size: 13px; color: var(--mut); margin-bottom: 8px;">Exclusive opposition rumors and market intelligence assigned solely to your team:</p>
-             <ul style="margin: 0; padding-left: 18px; font-family: Georgia, serif; font-size: 14.5px; line-height: 1.5;">
-                 ${me.private_news.map(item => `<li style="margin-bottom: 6px;">${esc(item)}</li>`).join('')}
-             </ul>
-         </div>
-     `;
- }
+function r2LB(rows, admin) {
+    return `<table><tr><th>Rank</th><th class="l">Team</th><th>Portfolio value</th><th>Growth</th>${admin ? '<th>Capital growth /50</th><th>Participation /20</th><th>Swap &amp; Sell /20</th><th>Diversif. /10</th>' : ''}<th>Round 1 Points</th><th>Round 2 Points</th><th>Overall Points</th></tr>${rows.map(r => `<tr style="${r.rank<=3?'font-weight:700;background:var(--bg)':''}"><td>${['🥇','🥈','🥉'][r.rank-1]||r.rank}</td><td class="l">${esc(r.team)}</td><td>${inr(r.value)}</td><td class="${cls(r.growth_pct)}">${r.growth_pct}\%</td>${admin&&r.parts?`<td>${r.parts.growth}</td><td>${r.parts.participation}</td><td>${r.parts.swap_sell}</td><td>${r.parts.diversification}</td>`:''}<td>${r.r1}</td><td>${r.r2}</td><td><b>${r.overall}</b></td></tr>`).join('')}</table>`;
+}
 
- let main='';
- if(S.stage=='r2pre')main=`<div class="card"><h3>Preliminary auction</h3>Each of the 8 companies is auctioned as a <b>100% stake</b>, one at a time (${R.lots_left} lots still to come). Every team must end this auction owning at least one industry – if you already own one, you may be asked to let other teams win the remaining lots.</div>${auctionPanel()}`;
- else if(ph=='newsletter')main=newspaper();
- else if(ph=='discussion')main=`${privNewsHtml}<div class="card"><h3>Discussion – bidding is disabled · calm time, no news is released now</h3><p>Use these minutes to plan: which stakes to buy, what to offer in your selling session, and whether to use a swap. Outlook items hint at the NEXT round.</p></div>${valTable()}${newspaper()}`;
- else main=`${windowPanel()}${auctionPanel()}`;
- 
- if(S.stage!='r2pre')main+=`${finishPanel()}<div class="grid gh">${swapPanel()}${borrowPanel()}</div>`;
- 
- H(head(`<span class="pill">${esc(R.teams[me.team_id]||'')}</span>`)+`<main>${stageBanner()}<div class="grid g4" style="margin:12px 0">${kp.map(k=>`<div class="card kpi"><h3>${k[0]}</h3><b class="${k[2]!=null?cls(k[2]):''}">${k[1]}</b></div>`).join('')}</div>
- <div class="grid" style="gap:12px">${privNewsHtml}${main}${stakeBoard()}<div class="grid gh"><div class="card"><h3>My stake holdings</h3><table><tr><th class="l">Industry</th><th class="l">Company</th><th>Stake %</th><th>Current value</th><th>Acquisition cost</th></tr>${rows.map(x=>`<tr><td class="l">${esc(x.industry)}</td><td class="l">${esc(x.company)}</td><td>${x.pct}%</td><td>${inr(x.value)}</td><td>${inr(x.cost)}</td></tr>`).join('')||'<tr><td colspan=5>No stakes yet</td></tr>'}</table></div>${valTable()}</div>
- <div class="grid gh">${feedBox()}<div class="card"><h3>Round 2 leaderboard</h3>${r2LB(R.leaderboard)}</div></div></div></main>${WM}`)}
+function newsCard(n) {
+    const c = sg(n), d = new Date((n.released_at || Date.now() / 1000) * 1000), co = (R.companies || []).find(x => x.symbol == n.symbol);
+    return `<article class="pc ${c} ${n.kind=='future'?'fut':''}"><div class="top"><span>${n.icon} ${esc(n.industry)}</span>${n.kind=='future'?'<span class="chip on">OUTLOOK · NEXT ROUND</span>':''}<span>${esc(n.category)}</span><span>Severity ${'●'.repeat(n.severity)}${'○'.repeat(3-n.severity)}</span></div><h2>${esc(n.headline)}</h2><h4>${esc(n.subhead)}</h4><p>${esc(n.body)}</p>
+    <div class="foot"><b>FINestra Financial Desk</b><span>${d.toLocaleDateString([], {day:'2-digit',month:'short',year:'numeric'})} · ${d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span><span class="sent ${c}">${arrow(n)} Sentiment: ${n.sentiment}</span><span>Company: ${esc(co?co.name:n.symbol)} (${n.symbol})</span></div></article>`;
+}
 
-function r2SpecView(banner){const heads=(R.news||[]).filter(n=>n.released).slice(0,4),ph=S.phase,pre=S.stage=='r2pre';
- const mid=pre||ph=='auction'?auctionPanel(true)+windowPanel():ph=='newsletter'?newspaper():`<div class="card"><h3>Discussion time</h3><p style="font-size:20px">Teams are discussing their strategy. No news is released during the discussion.</p></div>${valTable()}`;
- H(head()+(banner||'')+`<main class="${role=='spectator'?'big':''}">${stageBanner()}<div class="grid" style="gap:12px;margin-top:12px">${mid}
- <div class="card"><h3>Round 2 leaderboard</h3>${r2LB(R.leaderboard)}</div>${stakeBoard()}<div class="grid gh">${ph=='auction'&&!pre?`<div class="card"><h3>Latest headlines</h3>${heads.map(n=>`<div class="flash"><b>${n.icon} ${esc(n.headline)}</b></div>`).join('')||'None yet'}</div>`:''}${feedBox()}</div></div></main>${WM}`)}
+const roundNews = k => (R.news || []).filter(n => n.rnd == S.round && n.kind == k && n.released).sort((a, b) => a.ord - b.ord);
+
+function newspaper() {
+    const a = roundNews('now'), f = roundNews('future');
+    return `<div class="paper"><div class="mast"><small>FINESTRA FINANCIAL DESK · INDUSTRY TITANS EDITION · AUCTION ROUND ${S.round}</small><h1>THE FINESTRA FINANCIAL TIMES</h1><small>${a.length+f.length} / 10 items · ${a.length} / 6 current-round events · ${f.length} / 4 outlooks for the NEXT auction round</small></div>
+    <h3 class="sec">📰 CURRENT NEWS – already reflected in today's valuations</h3><div class="papergrid">${a.map(newsCard).join('')||'<p>The newsletter is being prepared…</p>'}</div>
+    <h3 class="sec">🔮 OUTLOOK – hints about what may move valuations in the NEXT auction round</h3><div class="papergrid">${f.map(newsCard).join('')||'<p>Outlook pieces arrive during the newsletter…</p>'}</div></div>`;
+}
+
+function stageBanner() {
+    const ph = S.phase;
+    return `<div class="stage"><h2>${esc(S.label)}</h2><span class="chip on">${S.stage=='r2pre'?'PRELIMINARY AUCTION':PHN[ph]||ph}</span><div class="t" id="pc">${mm(Math.max(0,S.phase_end-S.elapsed)/(S.scale||1))}</div></div>`;
+}
+
+function bump(n) {
+    const e = $('#bidamt');
+    if (!e) return;
+    e.value = n == 'min' ? R.auction.min_bid : (+e.value || R.auction.min_bid) + n;
+    FORM.bidamt = e.value;
+}
+
+async function bid() {
+    try {
+        await api('r2/bid', {auction_id: R.auction.id, amount: +$('#bidamt').value});
+        delete FORM.bidamt;
+        toast('Bid placed');
+        await refresh();
+    } catch(e) { toast(e.message); }
+}
+
+function auctionPanel(big) {
+    const A = R.auction, meid = R.me && R.me.team_id, ph = S.phase;
+    if (!A) return `<div class="card live"><h3>LIVE AUCTION</h3><div class="big" style="color:var(--mut)">${ph!='auction'?'Auction opens after the discussion phase':R.window?esc(R.window.name)+' – selling window is open':S.stage=='r2pre'&&!R.lots_left?'Preliminary lots exhausted':'Waiting for the next offer…'}</div></div>`;
+    const cd = A.status == 'countdown', key = A.id + ':' + A.min_bid;
+    if (FORM._aid !== key) { FORM._aid = key; delete FORM.bidamt; }
+    const can = role == 'team' && R.me && R.me.participant && meid != A.seller && meid != A.high_team && ph == 'auction';
+    return `<div class="card live ${cd?'hot':''}"><h3>LIVE AUCTION · ${A.kind=='prelim'?'Preliminary lot':'Team offer'} <span class="chip ${cd?'on':''}">${cd?'⏱ COUNTDOWN – going once…':'OPEN FOR BIDS'}</span></h3>
+    <div class="big">${esc(A.company)} <small style="font-size:16px;color:var(--mut)">${esc(A.industry)}</small></div>
+    <div class="kv"><div><span>Stake offered</span><b>${A.pct}%</b></div><div><span>Selling team</span><b>${esc(A.seller_name)}</b></div><div><span>Starting price</span><b>${inr(A.ask)}</b></div><div><span>Current highest bid</span><b>${A.high_bid?inr(A.high_bid):'—'}</b></div><div><span>Highest bidder</span><b>${A.high_name?esc(A.high_name):'—'}</b></div><div><span>Last bid</span><b>${A.last_bid?inr(A.last_bid)+' · '+esc(A.last_bid_team):'—'}</b></div><div><span>Indicative fair value</span><b>${inr(A.fair_value)}</b></div><div><span>Auction status</span><b>${cd?'Countdown':'Open – lapses in <span id="aex">'+mm(rem(A.expires))+'</span>'}</b></div></div>
+    ${cd?`<div class="cdn" id="acd">${Math.min(10,Math.max(0,Math.ceil(rem(A.cd_end))))}</div><div style="text-align:center;color:var(--mut)">No higher bid before zero → stake is awarded to ${esc(A.high_name)}. Any higher bid resets the countdown to 10.</div>`:''}
+    ${can?`<div class="row" style="margin-top:10px"><input id="bidamt" type="number" step="10000" value="${A.min_bid}" style="width:170px;font-size:18px"><button class="g" onclick="bump('min')">Min</button><button class="g" onclick="bump(50000)">+₹50K</button><button class="g" onclick="bump(100000)">+₹1L</button><button class="g" onclick="bump(500000)">+₹5L</button><button class="s" style="font-size:18px;padding:10px 26px" onclick="bid()">PLACE BID</button></div><small style="color:var(--mut)">Minimum next bid ${inr(A.min_bid)} · your buying capacity ${inr(R.me.capacity)}</small>${R.me.capacity<A.min_bid&&R.me.borrow_room>0&&R.me.can_act?`<div class="chip on" style="margin-top:8px">Short of cash by ${inr(A.min_bid-R.me.capacity)} – <a href="#" onclick="quickBorrow(${Math.min(R.me.borrow_room,Math.ceil((A.min_bid-R.me.capacity)/(1-R.me.borrow_fee_pct/100)/10000)*10000)});return false">borrow it now</a> or propose a swap below</div>`:''}`:role=='team'&&meid==A.high_team?'<div class="chip on" style="margin-top:10px">You are the highest bidder</div>':''}
+    </div>`;
+}
+
+function fillAsk() {
+    const st = (R.me.stakes || []).find(x => x.symbol == $('#sl_sym').value);
+    if (!st) return;
+    const v = Math.round(st.value * ((+$('#sl_pct').value || 0) / st.pct) / 1000) * 1000;
+    $('#sl_ask').value = v;
+    FORM.sl_ask = v;
+}
+
+async function sellNow() {
+    try {
+        await api('r2/sell', {symbol: $('#sl_sym').value, pct: +$('#sl_pct').value, ask: +$('#sl_ask').value});
+        delete FORM.sl_pct; delete FORM.sl_ask;
+        toast('Offer is live');
+        await refresh();
+    } catch(e) { toast(e.message); }
+}
+
+async function passNow() {
+    try {
+        await api('r2/pass', {});
+        toast('You passed');
+        await refresh();
+    } catch(e) { toast(e.message); }
+}
+
+function windowPanel() {
+    const W = R.window, me = R.me;
+    if (!W || S.phase != 'auction' || S.stage == 'r2pre') return '';
+    if (W.status == 'offered') return `<div class="window"><h2>${esc(W.name)} has offered a stake</h2>Bidding is open.</div>`;
+    if (role == 'team' && me && W.team == me.team_id) {
+        const st = me.stakes || [], s0 = st[0];
+        return `<div class="window"><h2>${esc(W.name)} – YOUR SELLING SESSION</h2><div>Decide within <b id="wcd">${mm(rem(W.deadline))}</b> – one selling session per auction round. You may <b>sell</b>, start a <b>swap</b> (below; swaps left ${me.swaps_left}/${me.swaps_total}) or pass. Stakes trade in 5% steps.</div>
+        <div class="row" style="justify-content:center;margin-top:8px"><select id="sl_sym" onchange="fillAsk()" style="width:auto">${st.map(x=>`<option value="${x.symbol}">${esc(x.company)} (${x.pct}% held)</option>`).join('')}</select><input id="sl_pct" type="number" step="5" min="5" max="100" value="${s0?Math.min(5,s0.pct):''}" oninput="fillAsk()" style="width:90px"><span>% stake (5% steps)</span><input id="sl_ask" type="number" step="10000" value="${s0?Math.round(s0.value*Math.min(5,s0.pct)/s0.pct/1000)*1000:''}" style="width:150px"><span>₹ starting price</span></div>
+        <div class="row" style="justify-content:center"><button class="s" style="font-size:18px;padding:10px 26px" onclick="sellNow()">OFFER FOR SALE</button><button class="g" style="font-size:18px;padding:10px 26px" onclick="passNow()">DONE / PASS</button></div></div>`;
+    }
+    return `<div class="window"><h2>${esc(W.name)} – SELLING SESSION</h2>deciding… <b id="wcd">${mm(rem(W.deadline))}</b></div>`;
+}
+
+const nm = sym => ((R.companies || []).find(x => x.symbol == sym) || {}).name || sym, val = (sym, pct) => {
+    const c = (R.companies || []).find(x => x.symbol == sym);
+    return c ? Math.round(c.value * pct / 100) : 0;
+};
+
+async function swapGo() {
+    try {
+        const d = +$('#sw_cd').value, amt = +($('#sw_ca').value || 0);
+        await api('r2/swap/propose', {receiver: $('#sw_to').value, give_symbol: $('#sw_g').value, give_pct: +$('#sw_gp').value, get_symbol: $('#sw_r').value, get_pct: +$('#sw_rp').value, cash: d * amt});
+        ['sw_gp', 'sw_rp', 'sw_ca'].forEach(k => delete FORM[k]);
+        toast('Swap proposed – waiting for confirmation');
+        await refresh();
+    } catch(e) { toast(e.message); }
+}
+
+async function swapAns(id, a) {
+    try {
+        await api('r2/swap/' + id + '/' + a, {});
+        toast(a == 'accept' ? 'Swap completed' : a == 'reject' ? 'Swap rejected' : 'Proposal withdrawn');
+    } catch(e) { toast(e.message); }
+    await refresh();
+}
+
+function swSum() {
+    const e = $('#sw_sum');
+    if (!e) return;
+    const g = val($('#sw_g').value, +$('#sw_gp').value || 0), r = val($('#sw_r').value, +$('#sw_rp').value || 0), c = (+$('#sw_cd').value) * (+$('#sw_ca').value || 0);
+    e.textContent = `You give ≈ ${inr(g)}${c>0?' + '+inr(c)+' cash':''} · you get ≈ ${inr(r)}${c<0?' + '+inr(-c)+' cash':''} (indicative values)`;
+}
+
+function swapCard(w, me) {
+    const mine = w.proposer == me.team_id, st = w.status;
+    return `<div class="flash" style="border-color:${st=='accepted'?'var(--up)':st=='pending'?'#ff9f1a':'var(--mut)'}"><div><b>${esc(w.proposer_name)}${mine?' (you)':''}</b> gives <b>${w.give_bp/100}% ${esc(nm(w.give_sym))}</b> (≈ ${inr(val(w.give_sym,w.give_bp/100))})${w.cash>0?' <b>+ '+inr(w.cash)+' cash</b>':''}<br>⇄ <b>${esc(w.receiver_name)}${!mine?' (you)':''}</b> gives <b>${w.get_bp/100}% ${esc(nm(w.get_sym))}</b> (≈ ${inr(val(w.get_sym,w.get_bp/100))})${w.cash<0?' <b>+ '+inr(-w.cash)+' cash</b>':''}<br>
+    <span class="chip ${st=='pending'?'on':''}">${st.toUpperCase()}</span> ${w.note&&st!='accepted'?'<small style="color:var(--mut)">'+esc(w.note)+'</small>':''}
+    ${st=='pending'&&!mine?`<button class="s" onclick="swapAns(${w.id},'accept')">ACCEPT</button> <button class="r" onclick="swapAns(${w.id},'reject')">REJECT</button>`:''}${st=='pending'&&mine?`<button class="g" onclick="swapAns(${w.id},'cancel')">WITHDRAW</button>`:''}</div></div>`;
+}
+
+function swapPanel() {
+    const me = R.me, sw = R.swaps || [], others = Object.entries(R.teams).filter(([id]) => id != me.team_id), pend = sw.filter(w => w.status == 'pending'), mineP = pend.filter(w => w.proposer == me.team_id);
+    const to = others.some(([id]) => id == FORM.sw_to) ? FORM.sw_to : (others[0] || [])[0], theirs = (R.holdings[to] || []), ok = me.can_act && me.swaps_left > 0 && !mineP.length && others.length && (me.stakes || []).length && theirs.length;
+    return `<div class="card"><h3>STAKE SWAP · swaps remaining: <b>${me.swaps_left} of ${me.swaps_total}</b> <span class="chip ${me.swaps_left>0?'on':''}">${me.swaps_left>0?'AVAILABLE':'ALL USED'}</span></h3>
+    <small style="color:var(--mut)">Propose a swap at any time during an auction round.</small>
+    ${pend.filter(w => w.receiver == me.team_id).map(w => swapCard(w, me)).join('')}
+    <div class="row" style="margin-top:8px"><span>I give</span><select id="sw_g" style="width:auto">${(me.stakes || []).map(x=>`<option value="${x.symbol}">${esc(x.company)} (${x.pct}% held)</option>`).join('')||'<option value="">no stakes</option>'}</select><input id="sw_gp" type="number" step="5" min="5" max="100" placeholder="% I give" oninput="swSum()" style="width:90px"><b>⇄</b>
+    <select id="sw_to" onchange="render()" style="width:auto">${others.map(([id,n])=>`<option value="${id}">${esc(n)}</option>`).join('')}</select><select id="sw_r" onchange="swSum()" style="width:auto">${theirs.map(x=>`<option value="${x.symbol}">${esc(x.company)} (${x.pct}% held)</option>`).join('')||'<option value="">no stakes</option>'}</select><input id="sw_rp" type="number" step="5" min="5" max="100" placeholder="% I get" oninput="swSum()" style="width:90px"></div>
+    <div class="row"><span>Cash adjustment</span><select id="sw_cd" onchange="swSum()" style="width:auto"><option value="0">none</option><option value="1">I add cash</option><option value="-1">they add cash</option></select><input id="sw_ca" type="number" step="10000" min="0" placeholder="₹ amount" oninput="swSum()" style="width:140px"><button ${ok?'':'disabled'} onclick="swapGo()">PROPOSE SWAP</button></div><div id="sw_sum" style="font-size:12px;color:var(--mut);margin:4px 0"></div>
+    ${sw.filter(w => !(pend.includes(w) && w.receiver == me.team_id)).slice(0, 6).map(w => swapCard(w, me)).join('')}</div>`;
+}
+
+async function finishGo() {
+    try {
+        await api('r2/finish', {});
+        toast('Marked as finished');
+        await refresh();
+    } catch(e) { toast(e.message); }
+}
+
+function finishPanel() {
+    const f = R.finish || {done: 0, total: 0}, pend = (R.swaps || []).some(w => w.status == 'pending');
+    return `<div class="card"><h3>FINISH ROUND <span class="chip ${f.me?'on':''}">${f.done} / ${f.total} teams ready</span></h3><div class="row" style="margin-top:8px"><button ${f.me||!R.me.can_act?'disabled':''} onclick="finishGo()">${f.me?'✔ YOU FINISHED':'FINISH ROUND'}</button></div></div>`;
+}
+
+async function borrowGo() {
+    try {
+        const r = await api('r2/borrow', {amount: +$('#bw_amt').value});
+        delete FORM.bw_amt;
+        toast('Borrowed ' + inr(r.amount));
+        await refresh();
+    } catch(e) { toast(e.message); }
+}
+
+async function repayGo(all) {
+    try {
+        const m = R.me, amt = all ? Math.min(m.borrowed, m.capacity) : +$('#bw_rp').value;
+        const r = await api('r2/repay', {amount: amt});
+        delete FORM.bw_rp;
+        toast('Repaid ' + inr(r.amount));
+        await refresh();
+    } catch(e) { toast(e.message); }
+}
+
+function bwSet(n) { const e = $('#bw_amt'); e.value = n; FORM.bw_amt = n; }
+async function quickBorrow(n) {
+    try {
+        await api('r2/borrow', {amount: n});
+        toast('Borrowed ' + inr(n));
+        await refresh();
+    } catch(e) { toast(e.message); }
+}
+
+function borrowPanel() {
+    const m = R.me, ok = m.can_act;
+    return `<div class="card"><h3>EXTRA CASH · BORROWING <span class="chip ${m.borrowed>0?'on':''}">${m.borrowed>0?'OUTSTANDING '+inr(m.borrowed):'NO DEBT'}</span></h3>
+    <div class="live"><div class="kv"><div><span>Spendable cash</span><b>${inr(m.cash)}</b></div><div><span>Outstanding borrowing</span><b class="${m.borrowed>0?'dn':''}">${inr(m.borrowed)}</b></div><div><span>Net cash after repaying</span><b>${inr(m.net_cash)}</b></div><div><span>Can still borrow this round</span><b>${inr(m.borrow_room)}</b></div><div><span>Borrowing penalty</span><b class="${m.borrow_penalty>0?'dn':''}">−${m.borrow_penalty} pts</b></div></div></div>
+    <div class="row" style="margin-top:8px"><input id="bw_amt" type="number" step="10000" min="10000" placeholder="₹ to borrow" style="width:150px"><button class="g" onclick="bwSet(500000)">+5 L</button><button class="g" onclick="bwSet(1000000)">+10 L</button><button class="g" onclick="bwSet(${m.borrow_room})">Max</button><button ${ok&&m.borrow_room>0?'':'disabled'} onclick="borrowGo()">BORROW</button>
+    <span style="width:18px"></span><input id="bw_rp" type="number" step="10000" min="10000" placeholder="₹ to repay" style="width:150px"><button class="g" ${ok&&m.borrowed>0?'':'disabled'} onclick="repayGo(false)">REPAY</button><button class="g" ${ok&&m.borrowed>0?'':'disabled'} onclick="repayGo(true)">REPAY ALL</button></div>
+    ${(m.loans || []).length?`<table style="margin-top:8px"><tr><th>Round</th><th class="l">Type</th><th>Amount</th><th>Fee</th><th>Outstanding after</th></tr>${m.loans.map(l=>`<tr><td>${l.rnd}</td><td class="l">${l.kind=='borrow'?'Borrowed':'Repaid'}</td><td>${inr(l.amount)}</td><td>${l.fee?inr(l.fee):'–'}</td><td>${inr(l.outstanding)}</td></tr>`).join('')}</table>`:''}</div>`;
+}
+
+const fmtL = n => n >= 1e5 ? (n / 1e5) + ' L' : n.toLocaleString('en-IN');
+function stakeBoard() {
+    const hs = R.holdings, me = R.me && R.me.team_id, L = R.latest_tx, A = R.auction;
+    return `<div class="card"><h3>TEAM STAKE BOARD – public holdings of every team</h3><div class="grid g3">${Object.entries(R.teams).map(([id, n])=>`<div class="tb ${id==me?'me':''}"><h4>${esc(n)}${id==me?' (you)':''}</h4>${(hs[id]||[]).map(x=>`<div class="st"><span>${esc(x.industry)}</span><b>${x.pct}%</b></div>`).join('')||'<small style="color:var(--mut)">No stakes yet</small>'}</div>`).join('')}</div>
+    <div class="row" style="margin-top:10px"><span class="chip">Latest transaction: ${L?`${esc(L.seller)} → ${esc(L.buyer)} ·${L.pct}% ${esc(nm(L.symbol))} for${inr(L.price)}`:'none yet'}</span><span class="chip">Current highest bid: ${A&&A.high_bid?inr(A.high_bid)+' by '+esc(A.high_name)+' on '+A.pct+'% '+esc(A.company):'—'}</span></div></div>`;
+}
+
+const feedBox = () => `<div class="card"><h3>AUCTION ACTIVITY FEED</h3><div class="feed">${(R.feed || []).map(f => `<div><small>${new Date(f.ts*1000).toLocaleTimeString()}</small>${esc(f.text)}</div>`).join('') || 'Nothing yet'}</div></div>`;
+const valTable = () => `<div class="card"><h3>Company valuations (re-priced by news)</h3><table><tr><th class="l">Industry</th><th class="l">Company</th><th>Valuation</th><th>Since start</th></tr>${R.companies.map(x=>`<tr><td class="l">${x.icon}${esc(x.industry)}</td><td class="l">${esc(x.name)}</td><td>${inr(x.value)}</td><td class="${cls(x.change_pct)}">${x.change_pct>0?'+':''}${x.change_pct}%</td></tr>`).join('')}</table></div>`;
+
+function r2TeamView() {
+    const me = R.me;
+    if (!me || !me.participant) return r2SpecView(`<div class="bar" style="background:#7a5cff;color:#fff">Your team is not among the Round 2 finalists – you are watching as a spectator</div>`);
+    const ph = S.phase, rows = me.stakes || [], kp = [['Available cash', inr(me.cash)], ['Stakes value', inr(me.held)], ['Portfolio value', inr(me.value)], ['Capital growth', me.growth_pct + '%', me.growth_pct], ['Round 1 Points', me.points.r1], ['Round 2 Points', me.points.r2], ['Overall Points', me.points.overall], ['Swaps remaining', me.swaps_left + ' / ' + me.swaps_total], ['Outstanding borrowing', inr(me.borrowed), me.borrowed > 0 ? -1 : null], ['Borrowing penalty', '−' + me.borrow_penalty + ' pts', me.borrow_penalty > 0 ? -1 : null]];
+
+    // Private News Card rendered strictly during discussion phase
+    let privNewsHtml = '';
+    if (ph == 'discussion' && me.private_news && me.private_news.length > 0) {
+        privNewsHtml = `
+            <div class="card" style="border: 2px solid #ff9f1a; background: var(--paper); margin-bottom: 12px;">
+                <h3 style="color: #ff9f1a; margin-bottom: 6px;">🔒 CONFIDENTIAL PRIVATE INTELLIGENCE (Discussion Phase)</h3>
+                <p style="font-size: 13px; color: var(--mut); margin-bottom: 8px;">Exclusive opposition rumors and market intelligence assigned solely to your team:</p>
+                <ul style="margin: 0; padding-left: 18px; font-family: Georgia, serif; font-size: 14.5px; line-height: 1.5;">
+                    ${me.private_news.map(item => `<li style="margin-bottom: 6px;">${esc(item)}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    }
+
+    let main = '';
+    if (S.stage == 'r2pre') main = `<div class="card"><h3>Preliminary auction</h3>Each of the 8 companies is auctioned as a <b>100% stake</b>, one at a time (${R.lots_left} lots still to come). Every team must end this auction owning at least one industry.</div>${auctionPanel()}`;
+    else if (ph == 'newsletter') main = newspaper();
+    else if (ph == 'discussion') main = `${privNewsHtml}<div class="card"><h3>Discussion – bidding is disabled · calm time, no news is released now</h3><p>Use these minutes to plan: which stakes to buy, what to offer in your selling session, and whether to use a swap.</p></div>${valTable()}${newspaper()}`;
+    else main = `${windowPanel()}${auctionPanel()}`;
+
+    if (S.stage != 'r2pre') main += `${finishPanel()}<div class="grid gh">${swapPanel()}${borrowPanel()}</div>`;
+
+    H(head(`<span class="pill">${esc(R.teams[me.team_id] || '')}</span>`) + `<main>${stageBanner()}<div class="grid g4" style="margin:12px 0">${kp.map(k=>`<div class="card kpi"><h3>${k[0]}</h3><b class="${k[2]!=null?cls(k[2]):''}">${k[1]}</b></div>`).join('')}</div>
+    <div class="grid" style="gap:12px">${main}${stakeBoard()}<div class="grid gh"><div class="card"><h3>My stake holdings</h3><table><tr><th class="l">Industry</th><th class="l">Company</th><th>Stake %</th><th>Current value</th><th>Acquisition cost</th></tr>${rows.map(x=>`<tr><td class="l">${esc(x.industry)}</td><td class="l">${esc(x.company)}</td><td>${x.pct}%</td><td>${inr(x.value)}</td><td>${inr(x.cost)}</td></tr>`).join('')||'<tr><td colspan=5>No stakes yet</td></tr>'}</table></div>${valTable()}</div>
+    <div class="grid gh">${feedBox()}<div class="card"><h3>Round 2 leaderboard</h3>${r2LB(R.leaderboard)}</div></div></div></main>${WM}`);
+}
+
+function r2SpecView(banner) {
+    const heads = (R.news || []).filter(n => n.released).slice(0, 4), ph = S.phase, pre = S.stage == 'r2pre';
+    const mid = pre || ph == 'auction' ? auctionPanel(true) + windowPanel() : ph == 'newsletter' ? newspaper() : `<div class="card"><h3>Discussion time</h3><p style="font-size:20px">Teams are discussing their strategy.</p></div>${valTable()}`;
+    H(head() + (banner || '') + `<main class="${role=='spectator'?'big':''}">${stageBanner()}<div class="grid" style="gap:12px;margin-top:12px">${mid}
+    <div class="card"><h3>Round 2 leaderboard</h3>${r2LB(R.leaderboard)}</div>${stakeBoard()}<div class="grid gh">${ph=='auction'&&!pre?`<div class="card"><h3>Latest headlines</h3>${heads.map(n=>`<div class="flash"><b>${n.icon} ${esc(n.headline)}</b></div>`).join('')||'None yet'}</div>`:''}${feedBox()}</div></div></main>${WM}`);
+}
+
 // ---------- organizer ----------
-async function r2cfg(){try{await api('r2/org/config',{companies:R.companies.map(x=>({symbol:x.symbol,name:$('#c_n_'+x.symbol).value,industry:$('#c_i_'+x.symbol).value,value:+$('#c_v_'+x.symbol).value}))});FORM={};toast('Industries saved and newsletter regenerated');await refresh()}catch(e){toast(e.message)}}
-async function r2act(p,b){try{const r=await api('r2/'+p,b||{});await refresh();return r}catch(e){toast(e.message)}}
-function orgR2(){if(!R)return '';const live=R2LIVE.includes(S.stage),started=live||BRK.includes(S.stage)||S.stage=='ended',A=R.auction;
- const hs=R.holdings;return `<div class="card" style="margin-top:12px"><h3>ROUND 2 – Industry Titans · control centre ${R.newsletter_on?'<span class="chip on">newsletter ON</span>':'<span class="chip">newsletter OFF</span>'}</h3>
- <div class="row"><button class="g" onclick="r2act('org/news/toggle',{on:${!R.newsletter_on}})">${R.newsletter_on?'Stop':'Start'} newsletter</button><button class="g" onclick="r2act('org/news/release')">Release newsletter now</button><button class="g" onclick="r2act('org/news/generate',{rounds:[1,2,3]})">Generate AI news (offline engine)</button>
- <button class="r" ${A?'':'disabled'} onclick="confirm('Cancel the live auction? The stake returns to the seller.')&&r2act('org/auction/cancel')">Cancel auction</button><button class="s" ${A?'':'disabled'} onclick="r2act('org/auction/force')">Force complete auction</button></div>
- <div class="grid g2" style="margin-top:12px"><div><h3>Industries & participating companies ${started?'(locked)':''}</h3><table><tr><th class="l">Symbol</th><th class="l">Industry</th><th class="l">Company</th><th>Valuation (₹ lakh)</th><th>Now</th></tr>${R.companies.map(x=>`<tr><td class="l">${x.symbol}</td><td><input id="c_i_${x.symbol}" value="${esc(x.industry)}" ${started?'disabled':''}></td><td><input id="c_n_${x.symbol}" value="${esc(x.name)}" ${started?'disabled':''}></td><td><input id="c_v_${x.symbol}" type="number" value="${Math.round(x.start_value/1e5)}" ${started?'disabled':''}></td><td>${inr(x.value)} <span class="${cls(x.change_pct)}">(${x.change_pct}%)</span></td></tr>`).join('')}</table>${started?'':'<button onclick="r2cfg()">Save industries</button>'}</div>
- <div><h3>Live auction & selling windows</h3>${A?`<b>${esc(A.company)}</b> ·${A.pct}% · seller ${esc(A.seller_name)} ·${A.status} · high ${A.high_bid?inr(A.high_bid)+' ('+esc(A.high_name)+')':'—'}<br>${A.bids.map(b=>`<small>${esc(b.team)} ${inr(b.amount)}</small>`).join(' · ')}`:'No live auction'}<table style="margin-top:8px"><tr><th>#</th><th class="l">Team</th><th>Window</th></tr>${(R.windows||[]).map(w=>`<tr><td>${w.ord+1}</td><td class="l">${esc(w.name)}</td><td>${w.status}</td></tr>`).join('')||'<tr><td colspan=3>—</td></tr>'}</table></div></div>
- <h3 style="margin-top:12px">Teams: capital, stakes & detailed scoring (organizer only)</h3><div style="overflow:auto"><table><tr><th class="l">Team</th><th>Cash</th><th class="l">Stakes</th><th>Swaps used</th><th>Borrowed</th><th>Portfolio</th><th>Growth</th><th>Capital Growth /50</th><th>Participation /20</th><th>Swap &amp; Sell /20</th><th>Diversification /10</th><th>Borrow penalty</th><th>Round 1 Points</th><th>Round 2 Points</th><th>Overall Points</th></tr>${R.leaderboard.map(r=>{const a=R.accounts.find(x=>x.team_id==r.id)||{};return `<tr><td class="l">${['🥇','🥈','🥉'][r.rank-1]||r.rank+'.'} ${esc(r.team)}</td><td>${inr(a.cash||0)}</td><td class="l" style="white-space:normal">${(hs[r.id]||[]).map(x=>x.pct+'% '+x.symbol).join(', ')||'—'}</td><td>${r.stats.swaps} /${r.stats.swaps_total}</td><td class="${r.borrowed>0?'dn':''}">${inr(r.borrowed)}</td><td>${inr(r.value)}</td><td class="${cls(r.growth_pct)}">${r.growth_pct}%</td><td>${r.parts.growth}</td><td>${r.parts.participation}</td><td>${r.parts.swap_sell}</td><td>${r.parts.diversification}</td><td class="dn">${r.borrow_penalty?'−'+r.borrow_penalty:'0'}</td><td>${r.r1}</td><td>${r.r2}</td><td><b>${r.overall}</b></td></tr>`}).join('')||'<tr><td colspan=15>Round 2 has not started</td></tr>'}</table></div>
- <div class="grid gh" style="margin-top:12px"><div><h3>Auction history</h3><div style="max-height:260px;overflow:auto"><table><tr><th>#</th><th class="l">Seller</th><th class="l">Lot</th><th>Status</th><th class="l">Winner</th><th>Price</th></tr>${(R.history||[]).map(a=>`<tr><td>${a.id}</td><td class="l">${esc(a.seller_name)}</td><td class="l">${a.bp/100}% ${a.symbol}</td><td>${a.status}</td><td class="l">${esc(a.winner_name\vert{}\vert{}'')}</td><td>${a.price?inr(a.price):''}</td></tr>`).join('')}</table></div></div>
- <div><h3>Swaps</h3><div style="max-height:260px;overflow:auto"><table><tr><th class="l">Proposer</th><th class="l">Gives</th><th class="l">Receiver</th><th class="l">Gets</th><th>Cash</th><th>Status</th></tr>${(R.all_swaps||[]).map(w=>`<tr><td class="l">${esc(w.proposer_name)}</td><td class="l">${w.give_bp/100}\%${w.give_sym}</td><td class="l">${esc(w.receiver_name)}</td><td class="l">${w.get_bp/100}\%${w.get_sym}</td><td>${w.cash?inr(w.cash):''}</td><td>${w.status}</td></tr>`).join('')}</table></div></div></div>
- <h3 style="margin-top:12px">Borrowing ledger</h3><div style="max-height:200px;overflow:auto"><table><tr><th>Round</th><th class="l">Team</th><th>Type</th><th>Amount</th><th>Fee</th><th>Outstanding</th></tr>${(R.loans||[]).map(l=>`<tr><td>${l.rnd}</td><td class="l">${esc(l.name)}</td><td>${l.kind}</td><td>${inr(l.amount)}</td><td>${l.fee?inr(l.fee):''}</td><td>${inr(l.outstanding)}</td></tr>`).join('')||'<tr><td colspan=6>No borrowing yet</td></tr>'}</table></div>
- <h3 style="margin-top:12px">Round 2 news (organizer view – hidden impacts shown)</h3><div style="max-height:300px;overflow:auto"><table><tr><th>ID</th><th class="l">Headline</th><th>Shown</th><th class="l">Hidden impact</th><th>Status</th></tr>${R.news.slice().sort((a,b)=>a.id<b.id?-1:1).map(n=>`<tr><td>${n.id}</td><td class="l">${esc(n.headline)}</td><td>${n.kind=='future'?'🔮 ':''}${n.sentiment}</td><td class="l">${Object.entries(JSON.parse(n.impacts)).map(([s,p])=>s+' '+(p*100).toFixed(1)+'\%').join(', ')}</td><td>${n.released?(n.kind=='future'?'Released – hint (price effect '+(n.applied>=1?'applied':'next round')+')':'Released – applied'):'Upcoming'}</td></tr>`).join('')}</table></div></div>`}
+async function r2cfg() {
+    try {
+        await api('r2/org/config', {companies: R.companies.map(x => ({symbol: x.symbol, name: $('#c_n_' + x.symbol).value, industry: $('#c_i_' + x.symbol).value, value: +$('#c_v_' + x.symbol).value}))});
+        FORM = {};
+        toast('Industries saved');
+        await refresh();
+    } catch(e) { toast(e.message); }
+}
+
+async function r2act(p, b) {
+    try {
+        const r = await api('r2/' + p, b || {});
+        await refresh();
+        return r;
+    } catch(e) { toast(e.message); }
+}
+
+function orgR2() {
+    if (!R) return '';
+    const live = R2LIVE.includes(S.stage), started = live || BRK.includes(S.stage) || S.stage == 'ended', A = R.auction;
+    const hs = R.holdings;
+    return `<div class="card" style="margin-top:12px"><h3>ROUND 2 – Industry Titans · control centre ${R.newsletter_on?'<span class="chip on">newsletter ON</span>':'<span class="chip">newsletter OFF</span>'}</h3>
+    <div class="row"><button class="g" onclick="r2act('org/news/toggle',{on:${!R.newsletter_on}})">${R.newsletter_on?'Stop':'Start'} newsletter</button><button class="g" onclick="r2act('org/news/release')">Release newsletter now</button><button class="g" onclick="r2act('org/news/generate',{rounds:[1,2,3]})">Generate AI news</button>
+    <button class="r" ${A?'':'disabled'} onclick="confirm('Cancel the live auction?')&&r2act('org/auction/cancel')">Cancel auction</button><button class="s" ${A?'':'disabled'} onclick="r2act('org/auction/force')">Force complete auction</button></div>
+    <div class="grid g2" style="margin-top:12px"><div><h3>Industries & companies ${started?'(locked)':''}</h3><table><tr><th class="l">Symbol</th><th class="l">Industry</th><th class="l">Company</th><th>Valuation (₹ lakh)</th><th>Now</th></tr>${R.companies.map(x=>`<tr><td class="l">${x.symbol}</td><td><input id="c_i_${x.symbol}" value="${esc(x.industry)}" ${started?'disabled':''}></td><td><input id="c_n_${x.symbol}" value="${esc(x.name)}" ${started?'disabled':''}></td><td><input id="c_v_${x.symbol}" type="number" value="${Math.round(x.start_value/1e5)}" ${started?'disabled':''}></td><td>${inr(x.value)} <span class="${cls(x.change_pct)}">(${x.change_pct}%)</span></td></tr>`).join('')}</table>${started?'':'<button onclick="r2cfg()">Save industries</button>'}</div>
+    <div><h3>Live auction & windows</h3>${A?`<b>${esc(A.company)}</b> ·${A.pct}% · seller ${esc(A.seller_name)} ·${A.status} · high ${A.high_bid?inr(A.high_bid)+' ('+esc(A.high_name)+')':'—'}<br>${A.bids.map(b=>`<small>${esc(b.team)} ${inr(b.amount)}</small>`).join(' · ')}`:'No live auction'}</div></div></div>`;
+}
