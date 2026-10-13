@@ -7,70 +7,119 @@ const R2LIVE=['r2pre','a1','a2','a3'],BRK=['brk0','brk1','brk2'];
 let tok=localStorage.tok||'',role=localStorage.role||'',S={},R=null,RES=null,P={},N=[],LB=[],OD={},ws,cur=null,tab='market',FORM={};
 const th0=localStorage.th||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.dataset.theme=th0;
 document.addEventListener('input',e=>{const t=e.target;if(t.id&&!t.dataset.nf)FORM[t.id]=t.value});
-function H(html){const a=document.activeElement,id=a&&a.id,sel=a&&a.selectionStart;$('#app').innerHTML=html;const ph=$('#chartPh');if(ph&&CH.card)ph.replaceWith(CH.card);   // the chart card (and its live chart) is re-inserted, never rebuilt
- for(const k in FORM){const n=document.getElementById(k);if(n&&'value' in n&&n.type!=='checkbox')n.value=FORM[k]}
- if(id){const n=document.getElementById(id);if(n&&['INPUT','SELECT','TEXTAREA'].includes(n.tagName)){n.focus();try{n.setSelectionRange(sel,sel)}catch(e){}}}}
+
+function H(html){
+    const a=document.activeElement,id=a&&a.id,sel=a&&a.selectionStart;
+    $('#app').innerHTML=html;
+    const ph=$('#chartPh');if(ph&&CH.card)ph.replaceWith(CH.card);
+    for(const k in FORM){const n=document.getElementById(k);if(n&&'value' in n&&n.type!=='checkbox')n.value=FORM[k]}
+    if(id){const n=document.getElementById(id);if(n&&['INPUT','SELECT','TEXTAREA'].includes(n.tagName)){n.focus();try{n.setSelectionRange(sel,sel)}catch(e){}}}
+}
+
 function toggleTheme(){const t=document.documentElement.dataset.theme=='dark'?'light':'dark';document.documentElement.dataset.theme=t;localStorage.th=t;chartTheme()}
 function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',3200)}
-async function api(p,b,m){const r=await fetch('/api/'+p,{method:b?'POST':(m||'GET'),headers:{'Content-Type':'application/json','x-token':tok},body:b?JSON.stringify(b):undefined});
- if(r.status==401&&tok&&!/login|recover/.test(p)){logout();throw Error('Session expired')}
- const j=r.headers.get('content-type')?.includes('json')?await r.json():await r.text();if(!r.ok)throw Error(typeof j.detail=='string'?j.detail:'Error');return j}
+
+async function api(p,b,m){
+    const r=await fetch('/api/'+p,{method:b?'POST':(m||'GET'),headers:{'Content-Type':'application/json','x-token':tok},body:b?JSON.stringify(b):undefined});
+    if(r.status==401&&tok&&!/login|recover/.test(p)){logout();throw Error('Session expired')}
+    const j=r.headers.get('content-type')?.includes('json')?await r.json():await r.text();
+    if(!r.ok)throw Error(typeof j.detail=='string'?j.detail:'Error');
+    return j;
+}
+
 function logout(){const t=localStorage.th,m=localStorage.mute;tok='';role='';localStorage.clear();localStorage.th=t;if(m)localStorage.mute=m;location.href='/'}
 const themeBtn=()=>'<button class="g" onclick="toggleTheme()">◐ Theme</button>',soundBtn=()=>`<button class="g" title="Sound on/off" onclick="toggleSound()">${SND.on?'🔊':'🔇'}</button>`;
+
 // ---------- landing ----------
-function landing(which){which=which||(location.pathname=='/spectator'?'spec':'org');
- H(`<div class="land"><h1>FINestra</h1><div style="color:var(--mut)">@Doms, AU</div><div class="tag">Think Beyond the Market. Trade Beyond the Ordinary.</div>
- <div class="card"><div class="tabs row"><button class="${which=='org'?'on':''}" onclick="landing('org')">Organizer</button><button class="${which=='team'?'on':''}" onclick="landing('team')">Team</button><button class="${which=='spec'?'on':''}" onclick="landing('spec')">Spectator</button><span style="flex:1"></span>${themeBtn()}</div>
- ${which=='org'?`<label>Username</label><input id="u"><label>Password</label><input id="p" type="password"><label><input type="checkbox" style="width:auto" onclick="p.type=this.checked?'text':'password'"> Show password</label> <label><input id="rm" type="checkbox" style="width:auto" checked> Remember me</label><div class="err" id="e"></div><button onclick="orgLogin()">Login</button>`:''}
- ${which=='team'?`<h3>Register your team</h3><input id="tn" placeholder="Team name"><input id="tl" placeholder="Team leader name"><input id="tc" placeholder="College / Institution (optional)"><input id="tm" type="number" min="1" placeholder="Number of members"><input id="tr" placeholder="Team registration code (if provided)"><div class="err" id="e"></div><button onclick="reg()">Register & enter</button>
-  <hr style="border-color:var(--bd)"><h3>Re-enter existing team</h3><div class="row"><input id="ri" placeholder="Team ID (T001)"><input id="rc" placeholder="Recovery code"><button class="g" onclick="rec()">Recover</button></div>`:''}
- ${which=='spec'?`<label>Spectator access code</label><input id="sc0"><div class="err" id="e"></div><button onclick="specLogin()">Enter</button>`:''}</div>${WM}</div>`)}
-async function go(p,b,r){try{const j=await api(p,b);tok=j.token;role=r;localStorage.tok=tok;localStorage.role=r;FORM={};if(j.recovery_code)alert(`Your Team ID: ${j.team_id}\nRecovery code: ${j.recovery_code}\nSAVE THESE – you need them to re-enter.`);boot()}catch(e){$('#e').textContent=e.message}}
+function landing(which){
+    which=which||(location.pathname=='/spectator'?'spec':'org');
+    H(`<div class="land"><h1>FINestra</h1><div style="color:var(--mut)">@Doms, AU</div><div class="tag">Think Beyond the Market. Trade Beyond the Ordinary.</div>
+    <div class="card"><div class="tabs row"><button class="${which=='org'?'on':''}" onclick="landing('org')">Organizer</button><button class="${which=='team'?'on':''}" onclick="landing('team')">Team</button><button class="${which=='spec'?'on':''}" onclick="landing('spec')">Spectator</button><span style="flex:1"></span>${themeBtn()}</div>
+    ${which=='org'?`<label>Username</label><input id="u"><label>Password</label><input id="p" type="password"><label><input type="checkbox" style="width:auto" onclick="p.type=this.checked?'text':'password'"> Show password</label> <label><input id="rm" type="checkbox" style="width:auto" checked> Remember me</label><div class="err" id="e"></div><button onclick="orgLogin()">Login</button>`:''}
+    ${which=='team'?`<h3>Register your team</h3><input id="tn" placeholder="Team name"><input id="tl" placeholder="Team leader name"><input id="tc" placeholder="College / Institution (optional)"><input id="tm" type="number" min="1" placeholder="Number of members"><input id="tr" placeholder="Team registration code (if provided)"><div class="err" id="e"></div><button onclick="reg()">Register & enter</button>
+    <hr style="border-color:var(--bd)"><h3>Re-enter existing team</h3><div class="row"><input id="ri" placeholder="Team ID (T001)"><input id="rc" placeholder="Recovery code"><button class="g" onclick="rec()">Recover</button></div>`:''}
+    ${which=='spec'?`<label>Spectator access code</label><input id="sc0"><div class="err" id="e"></div><button onclick="specLogin()">Enter</button>`:''}</div>${WM}</div>`);
+}
+
+async function go(p,b,r){
+    try{
+        const j=await api(p,b);tok=j.token;role=r;localStorage.tok=tok;localStorage.role=r;FORM={};
+        if(j.recovery_code)alert(`Your Team ID: ${j.team_id}\nRecovery code: ${j.recovery_code}\nSAVE THESE – you need them to re-enter.`);
+        boot();
+    }catch(e){$('#e').textContent=e.message}
+}
 const gv=id=>{const e=document.getElementById(id);return e?e.value:''};
-const orgLogin=()=>go('organizer/login',{username:gv('u'),password:gv('p')},'organizer'),specLogin=()=>go('spectator/login',{code:gv('sc0')},'spectator'),rec=()=>go('team/recover',{team_id:gv('ri'),code:gv('rc')},'team');
+const orgLogin=()=>go('organizer/login',{username:gv('u'),password:gv('p')},'organizer');
+const specLogin=()=>go('spectator/login',{code:gv('sc0')},'spectator');
+const rec=()=>go('team/recover',{team_id:gv('ri'),code:gv('rc')},'team');
 const reg=()=>go('team/register',{name:gv('tn').trim(),leader:gv('tl').trim(),college:gv('tc'),members:+gv('tm')||1,code:gv('tr')},'team');
+
 // ---------- state, websocket, timers ----------
 let busyR=false,again=false;
 let lastSig='';const VOL=['elapsed','stage_remaining','next_update_in','t0','elapsed0'];
-async function refresh(){if(busyR){again=true;return}busyR=true;try{const s=await api('state');S={...s,t0:Date.now(),elapsed0:s.elapsed};await loadData();
- const sig=JSON.stringify([role,tab,S,P,N,LB,OD,R,RES],(k,v)=>VOL.includes(k)?undefined:v);   // identical data -> no re-render, so the page (and chart) is not disturbed by the 5-second safety poll
- if(sig!==lastSig){lastSig=sig;render()}}catch(e){}finally{busyR=false;if(again){again=false;refresh()}}}
+async function refresh(){
+    if(busyR){again=true;return}
+    busyR=true;
+    try{
+        const s=await api('state');S={...s,t0:Date.now(),elapsed0:s.elapsed};await loadData();
+        const sig=JSON.stringify([role,tab,S,P,N,LB,OD,R,RES],(k,v)=>VOL.includes(k)?undefined:v);
+        if(sig!==lastSig){lastSig=sig;render()}
+    }catch(e){}finally{busyR=false;if(again){again=false;refresh()}}
+}
 async function teamData(){[P,N,LB]=await Promise.all([api('team/portfolio'),api('news'),api('leaderboard')])}
 async function orgData(){const [st,te,ne,lb,se,au,r2]=await Promise.all([api('organizer/stats'),api('organizer/teams'),api('news'),api('leaderboard'),api('organizer/settings'),api('organizer/audit'),api('r2/state')]);OD={st,te,ne,lb,se,au};R=r2;LB=lb}
-async function loadData(){const st=S.stage,r2=R2LIVE.includes(st)||BRK.includes(st)||st=='trans1'||st=='ended',j=[];
- if(r2&&role!='organizer')j.push(api('r2/state').then(x=>R=x));if(st=='trans1'||st=='ended')j.push(api('results').then(x=>RES=x));
- if(role=='team'&&['idle','test','r1'].includes(st))j.push(teamData());if(role=='spectator'&&['idle','test','r1'].includes(st))j.push(api('leaderboard').then(x=>LB=x));
- if(role=='organizer')j.push(orgData());await Promise.all(j)}
+async function loadData(){
+    const st=S.stage,r2=R2LIVE.includes(st)||BRK.includes(st)||st=='trans1'||st=='ended',j=[];
+    if(r2&&role!='organizer')j.push(api('r2/state').then(x=>R=x));
+    if(st=='trans1'||st=='ended')j.push(api('results').then(x=>RES=x));
+    if(role=='team'&&['idle','test','r1'].includes(st))j.push(teamData());
+    if(role=='spectator'&&['idle','test','r1'].includes(st))j.push(api('leaderboard').then(x=>LB=x));
+    if(role=='organizer')j.push(orgData());
+    await Promise.all(j);
+}
 function connect(){ws=new WebSocket((location.protocol=='https:'?'wss://':'ws://')+location.host+'/ws');ws.onmessage=m=>{const d=JSON.parse(m.data);(d.sounds||[]).forEach(snd);if(d.type=='restart')toast('Event restarted');refresh()};ws.onclose=()=>setTimeout(connect,1500);ws.onopen=()=>ws.send('hi')}
 setInterval(()=>{if(tok)refresh()},5000);
 const evt=()=>S.status=='running'?S.elapsed0+(Date.now()-S.t0)/1000*S.scale:S.elapsed0,rem=x=>Math.max(0,(x-evt())/(S.scale||1));
 let lastTk={};const setT=(s,t)=>{const e=$(s);if(e&&e.textContent!==t)e.textContent=t};
-function warnOverlay(run){let o=$('#warnov');const ev=(S.next_events||[]).map(e=>({...e,d:(e.at-evt())/(S.scale||1)})).filter(e=>e.d>0&&e.d<=10).sort((a,b)=>a.d-b.d)[0];
- if(!run||!ev||!['test','r1'].includes(S.stage)){if(o)o.style.display='none';return}
- if(!o){o=document.createElement('div');o.id='warnov';document.body.appendChild(o)}
- const T={event:['⚡','SURPRISE MARKET EVENT INCOMING','event'],mega:['🚨','MEGA EVENT INCOMING','mega']}[ev.type];
- o.className='warnov '+T[2];o.style.display='flex';const h=`<div><span>${T[0]}</span> ${T[1]}</div><b>${Math.ceil(ev.d)}</b>`;if(o.innerHTML!==h)o.innerHTML=h;
- const k=ev.type+ev.at;if(lastTk.w!=k){lastTk.w=k;snd(ev.type=='mega'?'alert':'warn')}}
-setInterval(()=>{if(!S.stage||!S.t0)return;const run=S.status=='running';warnOverlay(run);
- setT('#sc',mm(rem(S.stage_end)));setT('#pc',mm(rem(S.phase_end)));setT('#tb',mm(rem(S.stage_end)));setT('#tm','Time '+mm(evt()/(S.scale||1))+' / '+mm(S.total/(S.scale||1)));
- if(S.next_at!=null){setT('#nx','Next update '+mm(rem(S.next_at)));setT('#nx2',mm(rem(S.next_at)))}
- if(R&&R.window&&R.window.status=='active')setT('#wcd',mm(rem(R.window.deadline)));
- if(R&&R.auction){const a=R.auction;if(a.status=='open')setT('#aex',mm(rem(a.expires)));
-  if(a.status=='countdown'){const x=Math.min(10,Math.max(0,Math.ceil(rem(a.cd_end))));setT('#acd',x);const k=a.id+':'+x;if(run&&x>0&&lastTk.a!=k){lastTk.a=k;snd('tick')}}}
- const sr=rem(S.stage_end);if(run&&['test','r1','a3'].includes(S.stage)&&sr>0&&sr<=10){const x=Math.ceil(sr);if(lastTk.s!=S.stage+x){lastTk.s=S.stage+x;snd('tick')}}},250);
+function warnOverlay(run){
+    let o=$('#warnov');const ev=(S.next_events||[]).map(e=>({...e,d:(e.at-evt())/(S.scale||1)})).filter(e=>e.d>0&&e.d<=10).sort((a,b)=>a.d-b.d)[0];
+    if(!run||!ev||!['test','r1'].includes(S.stage)){if(o)o.style.display='none';return}
+    if(!o){o=document.createElement('div');o.id='warnov';document.body.appendChild(o)}
+    const T={event:['⚡','SURPRISE MARKET EVENT INCOMING','event'],mega:['🚨','MEGA EVENT INCOMING','mega']}[ev.type];
+    o.className='warnov '+T[2];o.style.display='flex';const h=`<div><span>${T[0]}</span> ${T[1]}</div><b>${Math.ceil(ev.d)}</b>`;if(o.innerHTML!==h)o.innerHTML=h;
+    const k=ev.type+ev.at;if(lastTk.w!=k){lastTk.w=k;snd(ev.type=='mega'?'alert':'warn')}
+}
+setInterval(()=>{
+    if(!S.stage||!S.t0)return;const run=S.status=='running';warnOverlay(run);
+    setT('#sc',mm(rem(S.stage_end)));setT('#pc',mm(rem(S.phase_end)));setT('#tb',mm(rem(S.stage_end)));setT('#tm','Time '+mm(evt()/(S.scale||1))+' / '+mm(S.total/(S.scale||1)));
+    if(S.next_at!=null){setT('#nx','Next update '+mm(rem(S.next_at)));setT('#nx2',mm(rem(S.next_at)))}
+    if(R&&R.window&&R.window.status=='active')setT('#wcd',mm(rem(R.window.deadline)));
+    if(R&&R.auction){const a=R.auction;if(a.status=='open')setT('#aex',mm(rem(a.expires)));
+    if(a.status=='countdown'){const x=Math.min(10,Math.max(0,Math.ceil(rem(a.cd_end))));setT('#acd',x);const k=a.id+':'+x;if(run&&x>0&&lastTk.a!=k){lastTk.a=k;snd('tick')}}}
+    const sr=rem(S.stage_end);if(run&&['test','r1','a3'].includes(S.stage)&&sr>0&&sr<=10){const x=Math.ceil(sr);if(lastTk.s!=S.stage+x){lastTk.s=S.stage+x;snd('tick')}}
+},250);
+
 // ---------- header ----------
-function head(extra){const s=S,r1=['test','r1'].includes(s.stage)&&s.status!='idle';
- return `<header><b>FINestra</b><span class="pill">@Doms, AU</span><span class="pill gold">${esc(s.label||'')}</span>${s.status!='idle'&&s.stage!='ended'&&!s.waiting?`<span class="pill cd" id="sc">${mm(s.stage_remaining/(s.scale||1))}</span>`:''}<span class="pill">${s.status=='paused'?'⏸ PAUSED':(s.status||'').toUpperCase()}</span>
- ${r1?`<span class="pill">Update #${s.update}/${s.max_update}</span><span class="pill">Every ${s.interval}s</span><span class="pill cd ${s.final5?'gold':''}" id="nx">Next update ${s.next_update_in==null?'--':mm(s.next_update_in/(s.scale||1))}</span><span class="pill">Index ${s.index}</span>`:''}
- <span class="pill" id="tm">Time ${mm((s.elapsed||0)/(s.scale||1))} / ${mm((s.total||0)/(s.scale||1))}</span><span class="sp"></span>${extra||''}${soundBtn()}${themeBtn()}<button class="g" onclick="logout()">Logout</button></header>
- ${s.stage=='test'?`<div class="bar test">TEST ROUND – <span id="tb">${mm(s.stage_remaining/(s.scale||1))}</span> · practice only: nothing here counts, all test data is wiped when Round 1 begins</div>`:''}
- ${s.stage=='r1'&&s.final5?'<div class="bar final">⚠ FINAL 10 MINUTES – FAST TRADING MODE · prices change every 30 seconds · no regular news · MEGA events at 31:00 and 36:00</div>':''}
- ${s.status=='paused'?'<div class="bar" style="background:#ff9f1a;color:#000">EVENT PAUSED BY ORGANIZER</div>':''}`}
+function head(extra){
+    const s=S,r1=['test','r1'].includes(s.stage)&&s.status!='idle';
+    return `<header><b>FINestra</b><span class="pill">@Doms, AU</span><span class="pill gold">${esc(s.label||'')}</span>${s.status!='idle'&&s.stage!='ended'&&!s.waiting?`<span class="pill cd" id="sc">${mm(s.stage_remaining/(s.scale||1))}</span>`:''}<span class="pill">${s.status=='paused'?'⏸ PAUSED':(s.status||'').toUpperCase()}</span>
+    ${r1?`<span class="pill">Update #${s.update}/${s.max_update}</span><span class="pill">Every ${s.interval}s</span><span class="pill cd ${s.final5?'gold':''}" id="nx">Next update ${s.next_update_in==null?'--':mm(s.next_update_in/(s.scale||1))}</span><span class="pill">Index ${s.index}</span>`:''}
+    <span class="pill" id="tm">Time ${mm((s.elapsed||0)/(s.scale||1))} / ${mm((s.total||0)/(s.scale||1))}</span><span class="sp"></span>${extra||''}${soundBtn()}${themeBtn()}<button class="g" onclick="logout()">Logout</button></header>
+    ${s.stage=='test'?`<div class="bar test">TEST ROUND – <span id="tb">${mm(s.stage_remaining/(s.scale||1))}</span> · practice only: nothing here counts, all test data is wiped when Round 1 begins</div>`:''}
+    ${s.stage=='r1'&&s.final5?'<div class="bar final">⚠ FINAL 10 MINUTES – FAST TRADING MODE · prices change every 30 seconds · no regular news · MEGA events at 31:00 and 36:00</div>':''}
+    ${s.status=='paused'?'<div class="bar" style="background:#ff9f1a;color:#000">EVENT PAUSED BY ORGANIZER</div>':''}`;
+}
+
 // ---------- tables / chart ----------
-function stockTable(click){return `<table><tr><th>Symbol</th><th class="l">Company</th><th>Price</th><th>Chg</th><th>Chg %</th><th>Vol</th><th>Avail</th>${click?'<th></th>':''}</tr>${(S.stocks||[]).map(x=>{const c=x.price-x.prev_price,p=c/x.prev_price*100;return `<tr class="clk" onclick="openStock('${x.symbol}')"><td><b>${x.symbol}</b></td><td class="l">${esc(x.name)}<br><small style="color:var(--mut)">${esc(x.industry)}</small></td><td>₹${fmt(x.price)}</td><td class="${cls(c)}">${c.toFixed(2)}</td><td class="${cls(c)}">${p.toFixed(2)}%</td><td>${x.volume}</td><td>${x.inventory}</td>${click?`<td><button class="s" onclick="event.stopPropagation();pick('${x.symbol}')">Trade</button></td>`:''}</tr>`}).join('')}</table>`}
-function lbTable(rows,admin){return `<table><tr><th>Rank</th><th class="l">Team</th><th>Portfolio</th><th>Return %</th><th>Score</th><th>Status</th>${admin?'<th>Ret/Cash/Disc/Risk/Div</th>':''}</tr>${rows.map(r=>`<tr style="${r.rank<=3?'font-weight:700;background:var(--bg)':''}"><td>${['🥇','🥈','🥉'][r.rank-1]||r.rank} ${r.move>0?'<span class=up>▲'+r.move+'</span>':r.move<0?'<span class=dn>▼'+-r.move+'</span>':''}</td><td class="l">${esc(r.team)}</td><td>₹${fmt(r.value)}</td><td class="${cls(r.ret)}">${r.ret}%</td><td>${r.total}</td><td>${r.status}</td>${admin?`<td>${Object.values(r.parts).join(' / ')}</td>`:''}</tr>`).join('')}</table>`}
+function stockTable(click){
+    return `<table><tr><th>Symbol</th><th class="l">Company</th><th>Price</th><th>Chg</th><th>Chg %</th><th>Vol</th><th>Avail</th>${click?'<th></th>':''}</tr>${(S.stocks||[]).map(x=>{const c=x.price-x.prev_price,p=c/x.prev_price*100;return `<tr class="clk" onclick="openStock('${x.symbol}')"><td><b>${x.symbol}</b></td><td class="l">${esc(x.name)}<br><small style="color:var(--mut)">${esc(x.industry)}</small></td><td>₹${fmt(x.price)}</td><td class="${cls(c)}">${c.toFixed(2)}</td><td class="${cls(c)}">${p.toFixed(2)}\%</td><td>${x.volume}</td><td>${x.inventory}</td>${click?`<td><button class="s" onclick="event.stopPropagation();pick('${x.symbol}')">Trade</button></td>`:''}</tr>`}).join('')}</table>`;
+}
+function lbTable(rows,admin){
+    return `<table><tr><th>Rank</th><th class="l">Team</th><th>Portfolio</th><th>Return %</th><th>Score</th><th>Status</th>${admin?'<th>Ret/Cash/Disc/Risk/Div</th>':''}</tr>${rows.map(r=>`<tr style="${r.rank<=3?'font-weight:700;background:var(--bg)':''}"><td>${['🥇','🥈','🥉'][r.rank-1]\vert{}\vert{}r.rank} ${r.move>0?'<span class=up>▲'+r.move+'</span>':r.move<0?'<span class=dn>▼'+-r.move+'</span>':''}</td><td class="l">${esc(r.team)}</td><td>₹${fmt(r.value)}</td><td class="${cls(r.ret)}">${r.ret}\%</td><td>${r.total}</td><td>${r.status}</td>${admin?`<td>${Object.values(r.parts).join(' / ')}</td>`:''}</tr>`).join('')}</table>`;
+}
 function openStock(sym){chartOpen(sym,true);if($('#qs')){OP.sym=sym;const o=$('#os');if(o)o.value=sym;qt()}}
-// ---------- candlestick chart: ONE persistent chart object; live updates are applied incrementally (series.update) so zoom, pan, crosshair and timeframe are never reset ----------
+
+// ---------- candlestick chart ----------
 const CH={card:null,chart:null,k:null,v:null,s5:null,s20:null,sup:null,res:null,sym:null,epoch:null,raw:[],agg:[],tf:+localStorage.tf||1,last:-1,busy:false,again:false,info:''},TFS=[1,2,4,8],CT=u=>u*120;
 const chTheme=()=>{const dk=document.documentElement.dataset.theme=='dark';return{layout:{background:{color:dk?'#121b30':'#ffffff'},textColor:dk?'#8f9bb8':'#6b7794'},grid:{vertLines:{color:dk?'#233050':'#eef1f7'},horzLines:{color:dk?'#233050':'#eef1f7'}}}};
 const chartCard='<div id="chartPh" style="display:none"></div>';
@@ -105,10 +154,10 @@ async function chartSync(force){if(!CH.sym||!CH.chart)return;CH.at=Date.now();if
 function chartOpen(sym,scroll){const c=chartEl(),ph=$('#chartPh');if(ph)ph.replaceWith(c);c.style.display='block';cur=sym;chartInit();
  if(CH.sym!==sym){CH.sym=sym;CH.raw=[];CH.agg=[];CH.last=-1;CH.epoch=null;CH.info='';c.querySelector('#chTitle').textContent=sym+' – '+((S.stocks||[]).find(x=>x.symbol==sym)||{}).name}
  if(scroll)c.scrollIntoView({behavior:'smooth'});chartSync(true)}
-// self-healing: every minute (and when the tab becomes visible again / the network returns) the chart is re-measured and its data reloaded in place, keeping zoom and pan
-function chartHeal(){if(!CH.chart||!CH.sym||!document.body.contains(CH.card))return;const b=CH.card.querySelector('#ch');try{CH.chart.resize(b.clientWidth||600,340)}catch(e){}chartSync(true)}
 setInterval(chartHeal,60000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)chartHeal()});addEventListener('online',chartHeal);
+function chartHeal(){if(!CH.chart||!CH.sym||!document.body.contains(CH.card))return;const b=CH.card.querySelector('#ch');try{CH.chart.resize(b.clientWidth||600,340)}catch(e){}chartSync(true)}
 function chartAfterRender(){if(CH.card&&CH.sym&&document.body.contains(CH.card))chartSync()}
+
 // ---------- Round 1 team ----------
 let OP={sym:'AURB',qty:1},LQ=null,busy=false;
 const canTrade=()=>S.status=='running'&&['test','r1'].includes(S.stage);
@@ -132,6 +181,7 @@ function teamView(){if(S.stage=='r1'&&S.final5&&S.status=='running')return fastV
  H(head(`<span class="pill">${esc(P.name)} · ${P.team_id}</span>`)+`<main><div class="grid g4">${kp.map(k=>`<div class="card kpi"><h3>${k[0]}</h3><b class="${k[2]!=null?cls(k[2]):''}">${k[1]}</b></div>`).join('')}</div>
  <div class="tabs row"><button class="${tab=='market'?'on':''}" onclick="tab='market';render()">Market & Trade</button><button class="${tab=='hold'?'on':''}" onclick="tab='hold';render()">Holdings & orders</button><button class="${tab=='news'?'on':''}" onclick="tab='news';render()">Market events</button><button class="${tab=='lb'?'on':''}" onclick="tab='lb';render()">Leaderboard & score</button></div>
  <div class="grid">${tab=='market'?chartCard:''}${body}</div></main>${WM}`);if(tab=='market'){qt();chartAfterRender()}}
+
 let FQ={qty:10,busy:false};
 async function fastTrade(sym,side){if(FQ.busy)return;let q=FQ.qty;const st=(S.stocks||[]).find(x=>x.symbol==sym),h=(P.holdings||[]).find(x=>x.symbol==sym);
  if(q=='MAX')q=side=='BUY'?Math.floor(P.cash/(st.price*1.002)):(h?h.qty:0);q=Math.min(q,side=='BUY'?st.inventory:(h?h.qty:0));if(!(q>0)){toast(side=='BUY'?'Not enough cash or inventory':'Nothing to sell');return}
@@ -144,10 +194,11 @@ function fastView(){const me=LB.find(r=>r.team==P.name),rk=me?me.rank:'–',held
  H(head(`<span class="pill">${esc(P.name)} · ${P.team_id}</span>`)+`<main class="fast"><div class="fhud"><div class="fclock"><small>TIME LEFT</small><b id="tb">${mm(S.stage_remaining/(S.scale||1))}</b></div><div class="fclock gold"><small>NEXT PRICE UPDATE</small><b id="nx2">--</b></div>
  ${kp.map(k=>`<div class="fk"><small>${k[0]}</small><b class="${k[2]!=null?cls(k[2]):''}">${k[1]}</b></div>`).join('')}</div>
  <div class="row" style="margin:10px 0;align-items:center"><b>ORDER SIZE</b>${[1,5,10,25,50,100,'MAX'].map(q=>`<button class="${FQ.qty==q?'s':'g'}" onclick="FQ.qty=${q=='MAX'?"'MAX'":q};render()">${q}</button>`).join('')}<span style="flex:1"></span>${news}</div>
- <div class="card"><table class="ftab"><tr><th>Symbol</th><th class="l">Company</th><th>Price</th><th>Chg %</th><th>Held</th><th>P&L</th><th></th></tr>${rows.map(x=>{const h=held[x.symbol];return `<tr><td><b>${x.symbol}</b></td><td class="l">${esc(x.name)}</td><td>₹${fmt(x.price)}</td><td class="${cls(x.p)}"><b>${x.p>=0?'▲':'▼'} ${Math.abs(x.p).toFixed(2)}%</b></td><td>${h?h.qty:0}</td><td class="${h?cls(h.pnl):''}">${h?fmt(h.pnl):'–'}</td><td class="fb"><button class="fbtn buy" onclick="fastTrade('${x.symbol}','BUY')">BUY</button><button class="fbtn sell" onclick="fastTrade('${x.symbol}','SELL')">SELL</button></td></tr>`}).join('')}</table></div><small style="color:var(--mut)">Fast mode: one tap = one order at the official price (brokerage applies). Round 1 trading ends when the clock reaches zero.</small></main>${WM}`)}
+ <div class="card"><table class="ftab"><tr><th>Symbol</th><th class="l">Company</th><th>Price</th><th>Chg %</th><th>Held</th><th>P&L</th><th></th></tr>${rows.map(x=>{const h=held[x.symbol];return `<tr><td><b>${x.symbol}</b></td><td class="l">${esc(x.name)}</td><td>₹${fmt(x.price)}</td><td class="${cls(x.p)}"><b>${x.p>=0?'▲':'▼'} ${Math.abs(x.p).toFixed(2)}\%</b></td><td>${h?h.qty:0}</td><td class="${h?cls(h.pnl):''}">${h?fmt(h.pnl):'–'}</td><td class="fb"><button class="fbtn buy" onclick="fastTrade('${x.symbol}','BUY')">BUY</button><button class="fbtn sell" onclick="fastTrade('${x.symbol}','SELL')">SELL</button></td></tr>`}).join('')}</table></div><small style="color:var(--mut)">Fast mode: one tap = one order at the official price (brokerage applies). Round 1 trading ends when the clock reaches zero.</small></main>${WM}`)}
 function filt(){const q=sf.value.toLowerCase(),all=S.stocks;S.stocks=all.filter(x=>(x.symbol+x.name+x.industry).toLowerCase().includes(q));$('#mt').innerHTML=stockTable(true);S.stocks=all}
 function specView(){H(head()+`<main class="big"><div class="grid g2"><div class="card"><h3>Live leaderboard</h3>${lbTable(LB.slice(0,10))}</div><div class="card kpi"><h3>Market</h3><b>Index ${S.index}</b><h3 style="margin-top:12px">Top gainers / losers</h3><table>${gl()}</table></div></div></main>${WM}`)}
 function gl(){const r=[...S.stocks].map(x=>({...x,p:(x.price/x.prev_price-1)*100})).sort((a,b)=>b.p-a.p);return [...r.slice(0,3),...r.slice(-3)].map(x=>`<tr><td>${x.symbol}</td><td>₹${fmt(x.price)}</td><td class="${cls(x.p)}">${x.p.toFixed(2)}%</td></tr>`).join('')}
+
 // ---------- transition / break / results ----------
 function interstitial(){const st=S.stage,tr=st=='trans1',nx=st=='brk0'?1:st=='brk1'?2:3;
  H(head()+`<main><div class="stage"><h2>${esc(S.label)}</h2><div class="t" id="pc">${tr&&S.waiting?'⏳ WAITING':mm(S.stage_remaining/(S.scale||1))}</div></div>
@@ -159,6 +210,7 @@ function resultsView(){const r2=(RES?.r2||[]).slice(0,5);
  H(head()+`<main><div class="stage"><h2>🏆 FINAL LEADERBOARD – FINestra @Doms, AU</h2></div>
  <div class="card final" style="margin:12px 0">${r2.map((r,i)=>`<div class="frow p${i+1}"><span class="fm">${medal[i]}</span><span class="fn">${esc(r.team)}</span><span class="fp">${r.overall} pts</span></div>`).join('')||'<p>Final results are being calculated…</p>'}</div>
  <div class="card"><h3>Points summary</h3>${r2LB(r2)}</div><div class="card" style="margin-top:12px"><h3>Round 1 – Market Masters · final standings</h3>${RES?lbTable(RES.r1):''}</div></main>${WM}`)}
+
 // ---------- organizer ----------
 const SETS=[['brk_normal','Brokerage % (Round 1)'],['capital','Round 1 capital ₹'],['time_scale','Time scale (1 = real, 20 = rehearsal)'],['spectator_code','Spectator code'],['reg_code','Team registration code (blank = none)'],['test_sec','Test round (sec)'],['r1_sec','Round 1 (sec)'],['tick_sec','Round 1 update interval – first 30 min (sec)'],['final_tick','Final-phase update interval (sec)'],['r2_teams','Teams in Round 2 (top N from Round 1)'],['r2_cash','Round 2 capital ₹'],['lots_per_co','Preliminary lots per company'],['lot_bp','Preliminary lot size (10000 = 100%, multiples of 500)'],['pre_sec','Preliminary auction (sec)'],['news_sec','Newsletter (sec)'],['disc_sec','Discussion (sec)'],['auc_sec','Auction phase (sec)'],['window_sec','Selling-session time per team (sec)'],['open_sec','Offer stays open without bids (sec)'],['brk_sec','Break between auction stages (sec)'],['trans_sec','(unused) Round 1 break waits for the organizer'],['borrow_limit','Borrowing limit per auction round ₹'],['borrow_fee_pct','Borrowing fee % (charged on each draw)'],['borrow_pen','Outstanding ₹ per penalty point (−1 pt each)'],['swap_ttl','Swap proposal valid for (sec)']];
 async function ev(a,b){try{await api('organizer/event/'+a,b||{});await refresh()}catch(e){toast(e.message)}}
@@ -169,24 +221,34 @@ async function tedit(id,b){await api('organizer/team/'+id,b);await refresh()}
 function askDel(id){const t=OD.te.find(x=>x.id==id);if(!t)return;const m=document.createElement('div');m.className='modal';m.id='dm';m.innerHTML=`<div class="card"><h3>Delete team</h3><p>Permanently delete <b>${esc(t.name)}</b> (${t.id}, leader ${esc(t.leader)})?</p><p style="color:var(--mut)">Its holdings return to the market, its trades and login session are removed, and it cannot reconnect. This cannot be undone.</p><div class="row"><button class="g" onclick="dm.remove()">Cancel</button><button class="r" onclick="doDel('${id}')">Yes, delete ${id}</button></div></div>`;document.body.appendChild(m)}
 async function doDel(id){try{await api('organizer/team/'+id+'/delete',{confirm_id:id});dm.remove();toast('Team '+id+' deleted');await refresh()}catch(e){toast(e.message)}}
 async function dl(path,name){const r=await fetch('/api/'+path,{headers:{'x-token':tok}});const a=document.createElement('a');a.href=URL.createObjectURL(await r.blob());a.download=name;a.click()}
-function orgView(){const s=OD.st,st=S.status,stg=S.stage,nl=OD.ne,r1=['idle','test','r1','trans1'].includes(stg),run=['running','paused'].includes(st);
- const flowChips=['test','r1','trans1','r2pre','brk0','a1','brk1','a2','brk2','a3'].map(n=>`<span class="chip ${n==stg?'on':''}">${{test:'Test',r1:'Round 1',trans1:'Break – waits for organizer',r2pre:'R2 Prelim',brk0:'Break',a1:'Auction 1',brk1:'Break',a2:'Auction 2',brk2:'Break',a3:'Auction 3'}[n]}</span>`).join(' → ');
- H(head(`<span class="pill">organizer</span>`)+`<main><div class="card"><h3>Event flow</h3><div class="row">${flowChips}</div><div class="row" style="margin-top:10px">
-  <button class="s" ${st!='idle'?'disabled':''} onclick="ev('start')">▶ Start event (Test Round)</button><button ${st!='running'?'disabled':''} onclick="ev('pause')">⏸ Pause</button><button ${st!='paused'?'disabled':''} onclick="ev('resume')">⏯ Resume</button>
-  <button class="${stg=='trans1'?'s':'g'}" style="${stg=='trans1'?'font-size:18px;padding:10px 24px':''}" ${!(run&&stg=='trans1')?'disabled':''} onclick="ev('start_r2')">▶ START ROUND 2</button><button class="g" ${!run?'disabled':''} onclick="ev('jump',{target:'next'})">⏭ Skip to next stage</button><button class="g" ${!run||!['test','r1','trans1'].includes(stg)?'disabled':''} onclick="confirm('Jump straight to Round 2? Round 1 will be frozen now.')&&ev('jump',{target:'r2pre'})">Start Round 2 now</button>
-  <button class="g" ${!run?'disabled':''} onclick="confirm('End the whole event now?')&&ev('end')">⏹ End</button><button class="r" onclick="restart()">RESTART EVENT</button>
-  <button class="g" onclick="dl('organizer/export','finestra_round1.csv')">Export Round 1</button><button class="g" onclick="dl('r2/export','finestra_round2.csv')">Export Round 2</button></div></div>
- ${r1?`<div class="grid g4" style="margin-top:12px">${[['Teams',s.teams],['Active',s.active],['Index',S.index],['Advancing',s.advancing],['Declining',s.declining],['Top gainer',s.gainer],['Top loser',s.loser],['Trades',s.trades],['Volume',s.volume]].map(k=>`<div class="card kpi"><h3>${k[0]}</h3><b>${k[1]}</b></div>`).join('')}</div>
- <div class="grid g2" style="margin-top:12px"><div class="card"><h3>Round 1 live leaderboard (full scoring)</h3>${lbTable(OD.lb,true)}</div><div class="card"><h3>Market</h3>${stockTable(false)}</div></div>
- <div class="card" style="margin-top:12px"><h3>Round 1 market events (${nl.filter(n=>n.released).length}/${nl.length} released) – one surprise event every 4 minutes + MEGA events release automatically; cards marked Manual are released by you</h3><div style="max-height:320px;overflow:auto"><table><tr><th>ID</th><th class="l">Headline</th><th>Type</th><th>Industry</th><th>Dir</th><th>Sev</th><th>Status</th><th></th></tr>${nl.map(n=>`<tr><td>${n.id}</td><td class="l">${esc(n.headline)}</td><td>${n.kind}</td><td>${esc(n.industry.split(' ')[0])}</td><td class="${n.direction>0?'up':'dn'}">${n.direction>0?'▲':'▼'}</td><td>${n.severity}</td><td>${n.released?'Released #'+n.released_upd:n.release_t!=null?'Auto @'+mm(n.release_t):'Manual'}</td><td>${n.released?'':`<button class="g" onclick="ev('release',{id:'${n.id}'})">Release</button>`}</td></tr>`).join('')}</table></div></div>`:''}
- ${orgR2()}
- <div class="card" style="margin-top:12px"><h3>Teams (${OD.te.length})</h3><table><tr><th>ID</th><th class="l">Name</th><th class="l">Leader</th><th>Members</th><th>Recovery code</th><th>Status</th><th>Actions</th></tr>${OD.te.map(t=>`<tr><td>${t.id}</td><td class="l">${esc(t.name)}</td><td class="l">${esc(t.leader)}</td><td>${t.members}</td><td>${t.recovery}</td><td>${t.status}</td><td><button class="g" onclick="tedit('${t.id}',{status:'${t.status=='deactivated'?'approved':'deactivated'}'})">${t.status=='deactivated'?'Activate':'Deactivate'}</button> <button class="g" onclick="tedit('${t.id}',{new_recovery:1})">New code</button> <button class="g" onclick="n=prompt('New team name');n&&tedit('${t.id}',{name:n})">Rename</button> <button class="r" title="Delete team" aria-label="Delete team ${t.id}" onclick="askDel('${t.id}')">🗑 Delete</button></td></tr>`).join('')}</table></div>
- <div class="grid gh" style="margin-top:12px"><div class="card"><h3>Settings</h3><div class="grid g4">${SETS.map(([k,l])=>`<div><label style="font-size:12px;color:var(--mut)">${l}</label><input id="set_${k}" value="${esc(OD.se[k]??'')}"></div>`).join('')}</div><button onclick="saveSet()">Save settings</button>
- <h3 style="margin-top:14px">Change password</h3><div class="row"><input id="po" type="password" placeholder="Current"><input id="pn" type="password" placeholder="New"><button class="g" onclick="chgpw()">Change</button></div></div>
- <div class="card"><h3>Audit log (latest)</h3><div style="max-height:360px;overflow:auto"><table><tr><th>Time</th><th class="l">Actor</th><th class="l">Action</th><th class="l">Detail</th></tr>${OD.au.slice(0,25).map(a=>`<tr><td>${new Date(a.ts*1000).toLocaleTimeString()}</td><td class="l">${esc(a.actor)}</td><td class="l">${esc(a.action)}</td><td class="l" style="white-space:normal">${esc(a.detail).slice(0,160)}</td></tr>`).join('')}</table></div></div></div>${chartCard}</main>${WM}`);chartAfterRender()}
+
+function orgView(){
+    const s=OD.st,st=S.status,stg=S.stage,nl=OD.ne,r1=['idle','test','r1','trans1'].includes(stg),run=['running','paused'].includes(st);
+    const flowChips=['test','r1','trans1','r2pre','brk0','a1','brk1','a2','brk2','a3'].map(n=>`<span class="chip ${n==stg?'on':''}">${{test:'Test',r1:'Round 1',trans1:'Break – waits for organizer',r2pre:'R2 Prelim',brk0:'Break',a1:'Auction 1',brk1:'Break',a2:'Auction 2',brk2:'Break',a3:'Auction 3'}[n]}</span>`).join(' → ');
+    H(head(`<span class="pill">organizer</span>`)+`<main><div class="card"><h3>Event flow</h3><div class="row">${flowChips}</div><div class="row" style="margin-top:10px">
+    <button class="s" ${st!='idle'?'disabled':''} onclick="ev('start')">▶ Start event (Test Round)</button><button ${st!='running'?'disabled':''} onclick="ev('pause')">⏸ Pause</button><button ${st!='paused'?'disabled':''} onclick="ev('resume')">⏯ Resume</button>
+    <button class="${stg=='trans1'?'s':'g'}" style="${stg=='trans1'?'font-size:18px;padding:10px 24px':''}" ${!(run&&stg=='trans1')?'disabled':''} onclick="ev('start_r2')">▶ START ROUND 2</button><button class="g" ${!run?'disabled':''} onclick="ev('jump',{target:'next'})">⏭ Skip to next stage</button><button class="g" ${!run||!['test','r1','trans1'].includes(stg)?'disabled':''} onclick="confirm('Jump straight to Round 2? Round 1 will be frozen now.')&&ev('jump',{target:'r2pre'})">Start Round 2 now</button>
+    <button class="g" ${!run?'disabled':''} onclick="confirm('End the whole event now?')&&ev('end')">⏹ End</button><button class="r" onclick="restart()">RESTART EVENT</button>
+    <button class="g" onclick="dl('organizer/export','finestra_round1.csv')">Export Round 1</button><button class="g" onclick="dl('r2/export','finestra_round2.csv')">Export Round 2</button></div></div>
+    ${r1?`<div class="grid g4" style="margin-top:12px">${[['Teams',s.teams],['Active',s.active],['Index',S.index],['Advancing',s.advancing],['Declining',s.declining],['Top gainer',s.gainer],['Top loser',s.loser],['Trades',s.trades],['Volume',s.volume]].map(k=>`<div class="card kpi"><h3>${k[0]}</h3><b>${k[1]}</b></div>`).join('')}</div>
+    <div class="grid g2" style="margin-top:12px"><div class="card"><h3>Round 1 live leaderboard (full scoring)</h3>${lbTable(OD.lb,true)}</div><div class="card"><h3>Market</h3>${stockTable(false)}</div></div>
+    <div class="card" style="margin-top:12px"><h3>Round 1 market events (${(OD.ne \vert{}\vert{} []).filter(n=>n.released).length}/${(OD.ne || []).length} released)</h3><div style="max-height:320px;overflow:auto"><table><tr><th>ID</th><th class="l">Headline</th><th>Type</th><th>Industry</th><th>Dir</th><th>Sev</th><th>Status</th><th></th></tr>${(OD.ne || []).map(n=>`<tr><td>${n.id}</td><td class="l">${esc(n.headline)}</td><td>${n.kind}</td><td>${esc(String(n.industry||'').split(' ')[0])}</td><td class="${n.direction>0?'up':'dn'}">${n.direction>0?'▲':'▼'}</td><td>${n.severity}</td><td>${n.released?'Released #'+n.released_upd:n.release_t!=null?'Auto @'+mm(n.release_t):'Manual'}</td><td>${n.released?'':`<button class="g" onclick="ev('release',{id:'${n.id}'})">Release</button>`}</td></tr>`).join('')}</table></div></div>`:''}
+    ${orgR2()}
+    <div class="card" style="margin-top:12px"><h3>Teams (${OD.te.length})</h3><table><tr><th>ID</th><th class="l">Name</th><th class="l">Leader</th><th>Members</th><th>Recovery code</th><th>Status</th><th>Actions</th></tr>${OD.te.map(t=>`<tr><td>${t.id}</td><td class="l">${esc(t.name)}</td><td class="l">${esc(t.leader)}</td><td>${t.members}</td><td>${t.recovery}</td><td>${t.status}</td><td><button class="g" onclick="tedit('${t.id}',{status:'${t.status=='deactivated'?'approved':'deactivated'}'})">${t.status=='deactivated'?'Activate':'Deactivate'}</button> <button class="g" onclick="tedit('${t.id}',{new_recovery:1})">New code</button> <button class="g" onclick="n=prompt('New team name');n&&tedit('${t.id}',{name:n})">Rename</button> <button class="r" title="Delete team" aria-label="Delete team ${t.id}" onclick="askDel('${t.id}')">🗑 Delete</button></td></tr>`).join('')}</table></div>
+    <div class="grid gh" style="margin-top:12px"><div class="card"><h3>Settings</h3><div class="grid g4">${SETS.map(([k,l])=>`<div><label style="font-size:12px;color:var(--mut)">${l}</label><input id="set_${k}" value="${esc(OD.se[k]??'')}"></div>`).join('')}</div><button onclick="saveSet()">Save settings</button>
+    <h3 style="margin-top:14px">Change password</h3><div class="row"><input id="po" type="password" placeholder="Current"><input id="pn" type="password" placeholder="New"><button class="g" onclick="chgpw()">Change</button></div></div>
+    <div class="card"><h3>Audit log (latest)</h3><div style="max-height:360px;overflow:auto"><table><tr><th>Time</th><th class="l">Actor</th><th class="l">Action</th><th class="l">Detail</th></tr>${OD.au.slice(0,25).map(a=>`<tr><td>${new Date(a.ts*1000).toLocaleTimeString()}</td><td class="l">${esc(a.actor)}</td><td class="l">${esc(a.action)}</td><td class="l" style="white-space:normal">${esc(a.detail).slice(0,160)}</td></tr>`).join('')}</table></div></div></div>${chartCard}</main>${WM}`);
+    chartAfterRender();
+}
+
 // ---------- dispatch ----------
-function render(){const st=S.stage;if(!st||!role)return;
- if(role=='organizer')return orgView();if(st=='ended')return resultsView();if(st=='trans1'||BRK.includes(st))return interstitial();
- if(R2LIVE.includes(st))return role=='team'?r2TeamView():r2SpecView();return role=='team'?teamView():specView()}
+function render(){
+    const st=S.stage;if(!st||!role)return;
+    if(role=='organizer')return orgView();
+    if(st=='ended')return resultsView();
+    if(st=='trans1'||BRK.includes(st))return interstitial();
+    if(R2LIVE.includes(st))return role=='team'?r2TeamView():r2SpecView();
+    return role=='team'?teamView():specView();
+}
 async function boot(){if(!tok)return landing();try{await api('me')}catch(e){return landing()}
- if(role=='spectator'&&location.pathname!='/spectator')history.replaceState(0,'','/spectator');connect();refresh()}
+ connect();refresh()}
