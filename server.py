@@ -100,6 +100,8 @@ def market_tick(name, el, start, rel):
     for n in C.execute("SELECT id,kind FROM news WHERE released=0 AND release_t IS NOT NULL AND release_t<=?", (rel,)).fetchall():
         C.execute("UPDATE news SET released=1,released_upd=? WHERE id=?", (upd, n["id"])); ch = True
         if n["kind"] in ("shock", "mega"): R2.SOUNDS.append("alert")
+        # IMMEDIATE PRICE SHOCK UPON AUTOMATIC/SCHEDULED NEWS RELEASE
+        M.apply_news_shock(C, n["id"])
     if name == "r1" and rel >= ia and D.get(C, "final5_on") != "1": D.put(C, "final5_on", "1"); R2.SOUNDS.append("warn"); ch = True
     due = schedule.due_updates(rel, tick, itick, ia, total)
     while upd < due:
@@ -356,9 +358,7 @@ async def event(action: str, b: dict, req: Request):
         # IMMEDIATE PRICE SHOCK UPON MANUAL EVENT RELEASE
         nid = b.get("id")
         C.execute("UPDATE news SET released=1,released_upd=? WHERE id=? AND released=0", (int(D.get(C, "upd")), nid))
-        upd = int(D.get(C, "upd")) + 1
-        D.put(C, "upd", upd)
-        M.step(C, upd, factor=1.0) # immediate price shock application
+        M.apply_news_shock(C, nid)
         R2.SOUNDS.append("alert")
     else: raise HTTPException(400, f"Cannot {action} while {stt}")
     audit(s["ref"], f"event_{action}", json.dumps(b)); await push("restart" if action == "restart" else "update"); return state()
