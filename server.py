@@ -98,7 +98,6 @@ def enter_stage(n, prev, start):
 def market_tick(name, el, start, rel):
     tick, itick, ia, total = mcfg(name); upd = int(D.get(C, "upd")); ch = False
     
-    # Process scheduled automatic or surprise news
     for n in C.execute("SELECT id,kind FROM news WHERE released=0 AND release_t IS NOT NULL AND release_t<=?", (rel,)).fetchall():
         C.execute("UPDATE news SET released=1,released_upd=? WHERE id=?", (upd, n["id"])); ch = True
         if n["kind"] in ("shock", "mega"): R2.SOUNDS.append("alert")
@@ -259,7 +258,7 @@ async def quote(b: dict, req: Request):
 @app.post("/api/team/order")
 async def order(b: dict, req: Request):
     s = need(req, "team"); clock()
-    try: q = T.execute(C, s["ref"], b.get("symbol"), b.get("side"), b.get("qty"), b.get("client_id"] or secrets.token_hex(8))
+    try: q = T.execute(C, s["ref"], b.get("symbol"), b.get("side"), b.get("qty"), b.get("client_id") or secrets.token_hex(8))
     except T.TradeError as e: raise HTTPException(400, str(e))
     await push(); return q
 
