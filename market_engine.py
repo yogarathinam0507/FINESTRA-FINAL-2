@@ -29,8 +29,8 @@ def analysis(closes):
                 trend="Bullish" if s5 >= s20 else "Bearish", tech=max(0, min(100, int(score))))
 
 def apply_news_shock(c, news_id):
-    """CRITICAL FIX: Immediately calculates and applies news/event price shocks at the exact second 
-       an event is triggered (manual, automatic, or mega surprise events), updating prices and candles instantly.
+    """CRITICAL FIX: Immediately calculates and applies news/event price shocks (manual, automatic, or mega events)
+       at the exact second they trigger, updating company valuations and real-time candles instantly.
     """
     n = c.execute("SELECT * FROM news WHERE id=?", (news_id,)).fetchone()
     if not n: return
@@ -40,29 +40,39 @@ def apply_news_shock(c, news_id):
     except Exception:
         impacts = {}
 
+    try:
+        sens = json.loads(n["sens"] or "{}")
+    except Exception:
+        sens = {}
+
     upd = int(D.get(c, "upd") or 0)
     cos = c.execute("SELECT * FROM companies").fetchall()
-    is_mega = n.get("kind") == "mega" or "All Sectors" in str(n.get("industry", ""))
+    
+    # Check if mega event or broad market event
+    is_mega = n.get("kind") in ("mega", "shock") or "All Sectors" in str(n.get("industry", "")) or "ALL" in impacts
 
     with D.tx(c):
         for co in cos:
             sym = co["symbol"]
             old_price = co["price"]
-
             pct = 0.0
-            sn = json.loads(n["sens"]) if n["sens"] else {}
-            if sym in sn:
-                pct = sn[sym]
+
+            # 1. Check direct symbol sentiment or impact mapping
+            if sym in sens:
+                pct = float(sens[sym])
             elif sym in impacts:
-                pct = impacts[sym]
-            elif is_mega or "All Sectors" in str(n.get("industry", "")) or "ALL" in impacts:
-                pct = impacts.get("ALL", 0.05 if float(n.get("direction", 1)) > 0 else -0.05)
+                pct = float(impacts[sym])
+            elif is_mega:
+                direction = float(n.get("direction", 1) or 1)
+                base_impact = float(n.get("impact", 5.0) or 5.0)
+                pct = direction * (base_impact / 100.0)
             else:
+                # 2. Check industry mapping
                 raw_ind = str(n.get("industry", ""))
                 n_industries = [i.strip() for i in raw_ind.split(",") if i.strip()]
-                if co["industry"] in n_industries:
-                    direction = float(n.get("direction", 1))
-                    impact_val = float(n.get("impact", 2.0))
+                if co["industry"] in n_industries or not n_industries:
+                    direction = float(n.get("direction", 1) or 1)
+                    impact_val = float(n.get("impact", 2.0) or 2.0)
                     pct = direction * (impact_val / 100.0)
 
             if abs(pct) < 1e-6:
@@ -72,7 +82,7 @@ def apply_news_shock(c, news_id):
             pct = max(-0.50, min(1.00, float(pct)))
             new_price = max(1.0, round(old_price * (1.0 + pct), 2))
 
-            # Update company price baseline
+            # Update company valuation
             c.execute("UPDATE companies SET prev_price=?, price=?, trend=? WHERE symbol=?",
                       (old_price, new_price, "Bullish" if pct > 0 else "Bearish", sym))
 
@@ -87,7 +97,7 @@ def apply_news_shock(c, news_id):
                 c.execute("INSERT INTO price_history(symbol,upd,o,h,l,c,v) VALUES(?,?,?,?,?,?,?)",
                           (sym, upd, old_price, max(old_price, new_price), min(old_price, new_price), new_price, 0))
 
-            # Audit trail recording timestamp, affected stock, price before/after, and impact percentage
+            # Audit trail
             c.execute("INSERT INTO audit(ts,actor,action,detail) VALUES(?,?,?,?)",
                       (time.time(), "news_shock_engine", "immediate_price_shock",
                        json.dumps(dict(news_id=news_id, symbol=sym, price_before=old_price, price_after=new_price, impact_pct=pct * 100))))
@@ -103,7 +113,7 @@ def step(c, upd, cap=0.06, factor=1.0):
     cos = c.execute("SELECT * FROM companies").fetchall()
     
     news = c.execute("SELECT * FROM news WHERE released=1 AND ? - released_upd < duration", (upd,)).fetchall()
-    is_mega = any(n.get("kind") == "mega" or "All Sectors" in str(n.get("industry", "")) for n in news)
+    is_mega = any(n.get("kind") in ("mega", "shock") or "All Sectors" in str(n.get("industry", "")) for n in news)
     if is_mega: 
         cap = max(cap, 0.20)
     
@@ -152,7 +162,11 @@ def step(c, upd, cap=0.06, factor=1.0):
             symbols = [s.strip() for s in str(n.get("symbols", "")).split(",") if s.strip()]
             raw_ind = str(n.get("industry", ""))
             n_industries = [i.strip() for i in raw_ind.split(",") if i.strip()]
-            sn = json.loads(n["sens"]) if n["sens"] else {}
+            
+            try:
+                sn = json.loads(n["sens"] or "{}")
+            except Exception:
+                sn = {}
             
             mult = 1.0
             if is_mega or "All Sectors" in raw_ind:
@@ -165,8 +179,8 @@ def step(c, upd, cap=0.06, factor=1.0):
                 mult = 0.30
 
             if sym in symbols or co["industry"] in n_industries or is_mega or "All Sectors" in raw_ind:
-                direction = float(n.get("direction", 1))
-                impact_val = float(n.get("impact", 0.0))
+                direction = float(n.get("direction", 1) or 1)
+                impact_val = float(n.get("impact", 0.0) or 0.0)
                 imp += direction * (impact_val / 100.0) * mult
 
         total_return = max(-cap * factor, min(cap * factor, combined_return + imp))
