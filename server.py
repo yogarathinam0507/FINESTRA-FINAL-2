@@ -102,7 +102,10 @@ def market_tick(name, el, start, rel):
     for n in C.execute("SELECT id,kind FROM news WHERE released=0 AND release_t IS NOT NULL AND release_t<=?", (rel,)).fetchall():
         C.execute("UPDATE news SET released=1,released_upd=? WHERE id=?", (upd, n["id"])); ch = True
         if n["kind"] in ("shock", "mega"): R2.SOUNDS.append("alert")
-        M.apply_news_shock(C, n["id"])
+        try:
+            M.apply_news_shock(C, n["id"])
+        except Exception as e:
+            print("news shock error:", repr(e))
 
     if name == "r1" and rel >= ia and D.get(C, "final5_on") != "1": 
         D.put(C, "final5_on", "1"); R2.SOUNDS.append("warn"); ch = True
@@ -256,7 +259,7 @@ async def quote(b: dict, req: Request):
 @app.post("/api/team/order")
 async def order(b: dict, req: Request):
     s = need(req, "team"); clock()
-    try: q = T.execute(C, s["ref"], b.get("symbol"), b.get("side"), b.get("qty"), b.get("client_id"] or secrets.token_hex(8))
+    try: q = T.execute(C, s["ref"], b.get("symbol"), b.get("side"), b.get("qty"), b.get("client_id") or secrets.token_hex(8))
     except T.TradeError as e: raise HTTPException(400, str(e))
     await push(); return q
 
@@ -334,8 +337,12 @@ async def get_settings(req: Request):
     need(req, "organizer"); return {k: D.get(C, k) for k in ("spectator_code", "reg_code", "auto_news") + tuple(RANGES)}
 
 @app.post("/api/organizer/event/{action}")
-async def event(action: str, b: dict, req: Request):
+async def event(action: str, req: Request):
     s = need(req, "organizer"); stt = D.get(C, "status")
+    try:
+        b = await req.json()
+    except Exception:
+        b = {}
     if action == "start" and stt == "idle": D.put(C, "elapsed", 0); D.put(C, "run_since", time.time()); D.put(C, "stage_cur", "idle"); D.put(C, "status", "running")
     elif action == "pause" and stt == "running": D.put(C, "elapsed", clock()); D.put(C, "status", "paused")
     elif action == "resume" and stt == "paused": D.put(C, "run_since", time.time()); D.put(C, "status", "running")
@@ -362,10 +369,8 @@ async def event(action: str, b: dict, req: Request):
             for k, v in dict(status="idle", elapsed="0", run_since="0", upd="0", elapsed_now="0", stage_cur="idle", r1_results="", r2_round="0", r2_final="", final5_on="0", hold_at="").items(): D.put(C, k, v)
         R2.gen_news(C)
     elif action == "release":
-        # IMMEDIATE PRICE SHOCK UPON MANUAL EVENT RELEASE
         nid = b.get("id") or b.get("news_id")
         if not nid:
-            # If no ID specified in body, try to find the first unreleased news item
             row = C.execute("SELECT id FROM news WHERE released=0 ORDER BY id LIMIT 1").fetchone()
             if row: nid = row["id"]
         if not nid: raise HTTPException(400, "News ID is required")
