@@ -1,4 +1,4 @@
-import random, math, json, database as D
+import random, math, json, database as D, time
 
 def sma(x, n): return sum(x[-n:]) / min(n, len(x)) if x else 0
 
@@ -23,12 +23,76 @@ def analysis(closes):
                 support=min(closes[-20:]) if closes else 0, resistance=max(closes[-20:]) if closes else 0,
                 trend="Bullish" if s5 >= s20 else "Bearish", tech=max(0, min(100, score)))
 
+def apply_news_shock(c, news_id):
+    """CRITICAL FIX: Immediately calculates and applies news/event price shocks at the exact second 
+       an organizer triggers or an automatic/mega event fires, updating prices and real-time candles instantly.
+    """
+    n = c.execute("SELECT * FROM news WHERE id=?", (news_id,)).fetchone()
+    if not n or n["released"] == 0: return
+
+    try:
+        impacts = json.loads(n["impacts"] or "{}")
+    except Exception:
+        impacts = {}
+
+    is_mega = n.get("kind") == "mega" or "All Sectors" in n.get("industry", "")
+    upd = int(D.get(c, "upd") or 0)
+    cos = c.execute("SELECT * FROM companies").fetchall()
+
+    with D.tx(c):
+        for co in cos:
+            sym = co["symbol"]
+            old_price = co["price"]
+
+            # Calculate pct impact for this company
+            pct = 0.0
+            sn = json.loads(n["sens"]) if n["sens"] else {}
+            if sym in sn:
+                pct = sn[sym]
+            elif sym in impacts:
+                pct = impacts[sym]
+            elif is_mega or "All Sectors" in n.get("industry", "") or "ALL" in impacts:
+                pct = impacts.get("ALL", 0.05 if n.get("direction", 1) > 0 else -0.05)
+            else:
+                raw_ind = n.get("industry", "")
+                n_industries = [i.strip() for i in raw_ind.split(",") if i.strip()]
+                if co["industry"] in n_industries:
+                    direction = float(n.get("direction", 1))
+                    impact_val = float(n.get("impact", 2.0))
+                    pct = direction * (impact_val / 100.0)
+
+            if abs(pct) < 1e-6:
+                continue
+
+            # Bounded immediate price shock (-50% to +100%)
+            pct = max(-0.50, min(1.00, float(pct)))
+            new_price = max(1.0, round(old_price * (1.0 + pct), 2))
+
+            # Update company valuation and price baseline
+            c.execute("UPDATE companies SET prev_price=?, price=?, trend=? WHERE symbol=?",
+                      (old_price, new_price, "Bullish" if pct > 0 else "Bearish", sym))
+
+            # Update current live candlestick (OHLC) in real time
+            candle = c.execute("SELECT * FROM price_history WHERE symbol=? AND upd=?", (sym, upd)).fetchone()
+            if candle:
+                new_h = max(candle["h"], new_price)
+                new_l = min(candle["l"], new_price)
+                c.execute("UPDATE price_history SET h=?, l=?, c=? WHERE symbol=? AND upd=?",
+                          (new_h, new_l, new_price, sym, upd))
+            else:
+                c.execute("INSERT INTO price_history(symbol,upd,o,h,l,c,v) VALUES(?,?,?,?,?,?,?)",
+                          (sym, upd, old_price, max(old_price, new_price), min(old_price, new_price), new_price, 0))
+
+            # Audit log recording timestamp, affected stock, price before/after, and impact percentage
+            c.execute("INSERT INTO audit(ts,actor,action,detail) VALUES(?,?,?,?)",
+                      (time.time(), "news_shock_engine", "immediate_price_shock",
+                       json.dumps(dict(news_id=news_id, symbol=sym, price_before=old_price, price_after=new_price, impact_pct=pct * 100))))
+
 def step(c, upd, cap=0.06, factor=1.0):
-    """Executes one official market update tick (every 45 seconds). Processes multi-industry cascades."""
+    """Executes one official market update tick (every 45 seconds). Independent background MACD/GBM loop."""
     rnd = random.Random(1000 + upd)
     cos = c.execute("SELECT * FROM companies").fetchall()
     
-    # Fetch active news (supports 2-3 industries for automatic, 1-2 for manual, or all for mega)
     news = c.execute("SELECT * FROM news WHERE released=1 AND ? - released_upd < duration", (upd,)).fetchall()
     is_mega = any(n.get("kind") == "mega" or "All Sectors" in n.get("industry", "") for n in news)
     if is_mega: 
@@ -46,19 +110,15 @@ def step(c, upd, cap=0.06, factor=1.0):
         
         def mult(n):
             if is_mega or "All Sectors" in n.get("industry", ""):
-                return 1.0 # Mega event hits all companies equally
-                
+                return 1.0 
             sn = json.loads(n["sens"]) if n["sens"] else {}
             if co["symbol"] in sn:
                 return sn[co["symbol"]]
-            
             raw_ind = n.get("industry", "")
             n_industries = [i.strip() for i in raw_ind.split(",") if i.strip()]
-            
             if co["industry"] in n_industries:
-                # Primary industry gets full impact, secondary/spillover industries get balanced weighting
                 return 1.2 if co["industry"] == n_industries[0] else 0.75
-            return 0.30 # Mild market spillover for unrelated sectors
+            return 0.30 
             
         imp = 0.0
         for n in news:
@@ -75,7 +135,6 @@ def step(c, upd, cap=0.06, factor=1.0):
                 imp += direction * impact_val / 100.0 * mult(n)
                 
         drift = (co["fund"] - 50) / 100 * 0.0005
-        # Guaranteed live volatility noise so prices never flatline or freeze
         noise = rnd.gauss(0, 0.007 * max(0.6, co["vol"]))
         r = co["beta"] * mkt + ind[key(co)] + drift + mom + imp + noise
         r = max(-cap * factor, min(cap * factor, r * factor))
