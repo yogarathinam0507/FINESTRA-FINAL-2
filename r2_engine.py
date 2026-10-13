@@ -115,27 +115,54 @@ def release_due(c, rnd, rel):
         if rel >= r["ord"] * step: release_news(c, r, rel); ch = True
     return ch
 
-# ---------------- private news generator ----------------
+# ---------------- private news generator (Opposition & Insider Rumors) ----------------
 def generate_private_news(c, rnd):
+    """Generates 2 unique strategic private news items per team during discussion time:
+       - Item 1: Rumor/hint targeting an opposition team's company.
+       - Item 2: Insider/market intelligence hint regarding another rival firm or own firm asset."""
     teams = [r["team_id"] for r in c.execute("SELECT team_id FROM r2_accounts").fetchall()]
     comps_list = comps(c)
     private_store = {}
+    
     for team in teams:
         other_teams = [t for t in teams if t != team]
-        if not other_teams: continue
-        t1 = random.choice(other_teams)
-        t1_stakes = c.execute("SELECT symbol FROM r2_stakes WHERE team_id=? AND bp>0", (t1,)).fetchall()
-        my_stakes = c.execute("SELECT symbol FROM r2_stakes WHERE team_id=? AND bp>0", (team,)).fetchall()
+        items = []
         
-        target_sym1 = t1_stakes[0]["symbol"] if t1_stakes else random.choice(comps_list)["symbol"]
-        target_sym2 = (my_stakes[0]["symbol"] if my_stakes and random.random() > 0.5 else (t1_stakes[0]["symbol"] if t1_stakes else target_sym1))
+        # Pick an opposition company if available
+        opp_sym = None
+        opp_team_name = "a rival competitor"
+        if other_teams:
+            opp_t = random.choice(other_teams)
+            opp_stakes = c.execute("SELECT symbol FROM r2_stakes WHERE team_id=? AND bp>0", (opp_t,)).fetchall()
+            if opp_stakes:
+                opp_sym = random.choice(opp_stakes)["symbol"]
+                opp_team_name = tname(c, opp_t)
         
-        co1 = c.execute("SELECT name FROM r2_companies WHERE symbol=?", (target_sym1,)).fetchone()
-        co2 = c.execute("SELECT name FROM r2_companies WHERE symbol=?", (target_sym2,)).fetchone()
+        if not opp_sym and comps_list:
+            opp_sym = random.choice(comps_list)["symbol"]
+            
+        co_opp = c.execute("SELECT name, industry FROM r2_companies WHERE symbol=?", (opp_sym,)).fetchone() if opp_sym else None
+        opp_name = co_opp["name"] if co_opp else "Target Firm"
         
-        n1 = f"CONFIDENTIAL RUMOR: Insider sources suggest {co1['name'] if co1 else target_sym1} is restructuring operations."
-        n2 = f"PROPRIETARY BRIEF: Market intelligence indicates potential supply shifts affecting {co2['name'] if co2 else target_sym2}."
-        private_store[team] = [n1, n2]
+        # Item 1: Opposition tactical rumor
+        rumors_opp = [
+            f"CONFIDENTIAL TIP: {opp_team_name}'s key asset '{opp_name}' is rumored to face supply chain bottlenecks in this round.",
+            f"INSIDER WHISPER: Competitors holding '{opp_name}' are quietly looking to offload their position due to hidden liabilities.",
+            f"STRATEGIC RADAR: Market chatter suggests '{opp_name}' held by {opp_team_name} is bracing for an unexpected sector correction."
+        ]
+        items.append(random.choice(rumors_opp))
+        
+        # Item 2: General market/insider intelligence
+        random_comp = random.choice(comps_list) if comps_list else None
+        comp_name = random_comp["name"] if random_comp else "Key Industry"
+        rumors_market = [
+            f"PROPRIETARY BRIEF: Heavy accumulation is expected in '{comp_name}' before the upcoming auction window closes.",
+            f"DISCREET INTELLIGENCE: Unnamed institutional players are bidding up stakes in the {random_comp['industry'] if random_comp else 'tech'} sector.",
+            f"RUMOR MILL: Valuation markup anticipated for '{comp_name}' as hidden demand peaks during the current cycle."
+        ]
+        items.append(random.choice(rumors_market))
+        
+        private_store[team] = items
     return private_store
 
 # ---------------- auction core ----------------
@@ -232,7 +259,6 @@ def award(c, a, now):
 def force_complete(c, now):
     a = active_auction(c)
     if not a: raise R2Error("No live auction")
-    # STRICTLY LAPSE IF NO BIDS; NO RANDOM ALLOCATION WHATSOEVER
     if a["high_bid"] is None or a["high_team"] is None:
         lapse(c, a, now, "Force completed by organizer - Unsold / Unbidded")
     else:
@@ -268,7 +294,7 @@ def round_done(c, rnd):
     if active_auction(c): return False
     if rnd == 0:
         if c.execute("SELECT 1 FROM r2_auctions WHERE rnd=0 AND status IN ('queued','open','countdown')").fetchone(): return False
-        return True # Preliminary auction completes as soon as all queued lots are handled, without forcing allocations on unbidded teams.
+        return True
     n = c.execute("SELECT COUNT(*) FROM r2_windows WHERE rnd=?", (rnd,)).fetchone()[0]
     if n == 0 or c.execute("SELECT 1 FROM r2_windows WHERE rnd=? AND status IN ('pending','active','offered')", (rnd,)).fetchone(): return False
     if c.execute("SELECT 1 FROM r2_swaps WHERE rnd=? AND status='pending'", (rnd,)).fetchone(): return False
@@ -284,7 +310,6 @@ def finish_round(c, team, rnd, now):
         if c.execute("SELECT 1 FROM r2_swaps WHERE rnd=? AND proposer=? AND status='pending'", (rnd, team)).fetchone(): raise R2Error("You still have a pending swap proposal")
         c.execute("INSERT OR IGNORE INTO r2_finish(rnd,team_id,ts) VALUES(?,?,?)", (rnd, team, now)); feed(c, f"{tname(c, team)} is ready to finish the round", rnd)
 def ensure_first_stakes(c, now):
-    # Completely removed mandatory safety-net allocation for unbidded teams as requested.
     pass
 # ---------------- cash capacity & borrowing ----------------
 def committed(c, tid):
@@ -485,17 +510,14 @@ def state_for(c, role, team_id, now):
         teams={r["team_id"]: tname(c, r["team_id"]) for r in c.execute("SELECT team_id FROM r2_accounts")}, news=news_view(c, role == "organizer"),
         newsletter_on=D.get(c, "newsletter_on") == "1", lots_left=c.execute("SELECT COUNT(*) FROM r2_auctions WHERE status='queued'").fetchone()[0])
     
+    # Generate and assign private news strictly during discussion phase
     st_cur = D.get(c, "stage_cur")
+    priv_map = {}
     if rnd >= 1 and st_cur in ("a1", "a2", "a3"):
         s0, _ = flow.bounds(c, st_cur)
         current_ph = flow.phase(c, st_cur, now - s0)
         if current_ph == "discussion":
             priv_map = generate_private_news(c, rnd)
-            out["private_news"] = priv_map.get(team_id, [])
-        else:
-            out["private_news"] = []
-    else:
-        out["private_news"] = []
 
     if role == "team":
         acc, st, held, committed = portfolio(c, team_id) if c.execute("SELECT 1 FROM r2_accounts WHERE team_id=?", (team_id,)).fetchone() else (None, [], 0, 0)
@@ -508,9 +530,10 @@ def state_for(c, role, team_id, now):
             out["me"] = dict(participant=True, team_id=team_id, start=acc["start_cash"], cash=acc["cash"], committed=committed, capacity=acc["cash"] - committed, value=sc["value"], held=held,
                 borrowed=sc["borrowed"], borrow_penalty=sc["borrow_penalty"], net_cash=acc["cash"] - sc["borrowed"], borrow_limit=int(borrow_limit(c)), borrow_room=borrow_room(c, team_id, rnd) if rnd >= 1 else 0, borrow_fee_pct=borrow_fee_pct(c), borrow_pen_unit=int(borrow_pen_unit(c)), fees_paid=int(acc["fees"] or 0), can_act=live,
                 loans=[dict(r) for r in c.execute("SELECT kind,amount,fee,outstanding,rnd,ts FROM r2_loans WHERE team_id=? ORDER BY id DESC LIMIT 8", (team_id,))],
-                growth_pct=sc["growth_pct"], points=dict(r1=sc["r1"], r2=sc["r2"], overall=sc["overall"]), swaps_left=swaps_left(c, team_id), swaps_total=swaps_total(c, team_id), swap_ttl=int(swap_ttl(c)), in_session=win_me, stakes=[dict(symbol=s["symbol"], industry=s["industry"], company=s["name"], pct=s["bp"] / 100, value=s["bp"] * s["value"] // 10000, cost=s["cost"]) for s in st])
+                growth_pct=sc["growth_pct"], points=dict(r1=sc["r1"], r2=sc["r2"], overall=sc["overall"]), swaps_left=swaps_left(c, team_id), swaps_total=swaps_total(c, team_id), swap_ttl=int(swap_ttl(c)), in_session=win_me, stakes=[dict(symbol=s["symbol"], industry=s["industry"], company=s["name"], pct=s["bp"] / 100, value=s["bp"] * s["value"] // 10000, cost=s["cost"]) for s in st],
+                private_news=priv_map.get(team_id, []))
             out["swaps"] = [dict(r) | dict(proposer_name=tname(c, r["proposer"]), receiver_name=tname(c, r["receiver"])) for r in c.execute("SELECT * FROM r2_swaps WHERE (rnd=? OR status='pending') AND (proposer=? OR receiver=?) ORDER BY id DESC LIMIT 12", (rnd, team_id, team_id))]
-        else: out["me"] = dict(participant=False)
+        else: out["me"] = dict(participant=False, private_news=[])
     if role == "organizer":
         out["accounts"] = [dict(team_id=r["team_id"], name=tname(c, r["team_id"]), cash=r["cash"], borrowed=r["borrowed"], fees=r["fees"]) for r in c.execute("SELECT * FROM r2_accounts")]
         out["loans"] = [dict(r) | dict(name=tname(c, r["team_id"])) for r in c.execute("SELECT * FROM r2_loans ORDER BY id DESC LIMIT 40")]
