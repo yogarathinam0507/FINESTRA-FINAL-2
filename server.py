@@ -256,7 +256,7 @@ async def quote(b: dict, req: Request):
 @app.post("/api/team/order")
 async def order(b: dict, req: Request):
     s = need(req, "team"); clock()
-    try: q = T.execute(C, s["ref"], b.get("symbol"), b.get("side"), b.get("qty"), b.get("client_id") or secrets.token_hex(8))
+    try: q = T.execute(C, s["ref"], b.get("symbol"), b.get("side"), b.get("qty"), b.get("client_id"] or secrets.token_hex(8))
     except T.TradeError as e: raise HTTPException(400, str(e))
     await push(); return q
 
@@ -363,7 +363,11 @@ async def event(action: str, b: dict, req: Request):
         R2.gen_news(C)
     elif action == "release":
         # IMMEDIATE PRICE SHOCK UPON MANUAL EVENT RELEASE
-        nid = b.get("id")
+        nid = b.get("id") or b.get("news_id")
+        if not nid:
+            # If no ID specified in body, try to find the first unreleased news item
+            row = C.execute("SELECT id FROM news WHERE released=0 ORDER BY id LIMIT 1").fetchone()
+            if row: nid = row["id"]
         if not nid: raise HTTPException(400, "News ID is required")
         C.execute("UPDATE news SET released=1,released_upd=? WHERE id=? AND released=0", (int(D.get(C, "upd")), nid))
         M.apply_news_shock(C, nid)
