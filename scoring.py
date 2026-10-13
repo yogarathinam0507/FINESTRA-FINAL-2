@@ -9,87 +9,143 @@ def portfolio(c, tid):
     val = t["cash"] + mv
     return dict(team=t, holdings=hs, invested=inv, market=mv, value=val, pnl=val - cap, ret=(val / cap - 1) * 100, cap=cap)
 
+def get_expenditure_tier(invested):
+    """Categorizes total portfolio expenditure into tiers."""
+    if invested < 300_000:
+        return "below_3l"
+    elif 300_000 <= invested < 500_000:
+        return "3l_to_5l"
+    elif 500_000 <= invested < 700_000:
+        return "5l_to_7l"
+    else:
+        return "above_7l"
+
 def score(c, tid):
     p = portfolio(c, tid)
     t = p["team"]
-    v = max(p["value"], 1)
-    
-    # 1. Return Points (Max 60 pts):
+    invested = p["invested"]  # Total expenditure
+    cash = t["cash"]
     portfolio_ret = p["ret"]
+    
+    tier = get_expenditure_tier(invested)
+    
+    # ==========================================
+    # 1. Return Score (Max 60 Points)
+    # ==========================================
+    base_returns_map = {
+        "below_3l": 10.0,
+        "3l_to_5l": 21.0,
+        "5l_to_7l": 28.0,
+        "above_7l": 35.0
+    }
+    base_ret = base_returns_map[tier]
+    
     if portfolio_ret >= 0:
-        ret_score = 25.0 + portfolio_ret
+        ret_adjustment = portfolio_ret * 3.0
+        ret_score = base_ret + ret_adjustment
     else:
-        ret_score = 25.0 + (portfolio_ret / 2.0)
+        ret_adjustment = abs(portfolio_ret) * 1.5
+        ret_score = base_ret - ret_adjustment
+        
     ret = round(max(0.0, min(60.0, ret_score)), 2)
     
-    # 2. Cash Management Points (Max 10 pts):
-    cr = (t["cash"] / v) * 100
-    if 5.0 <= cr <= 10.0:
-        cash = 9.0
-    elif 11.0 <= cr <= 20.0:
-        cash = 6.0
+    # ==========================================
+    # 2. Cash Management Points (Max 10 Points)
+    # ==========================================
+    if cash <= 50_000:
+        cash_score = 7.0
+    elif 50_000 < cash <= 150_000:
+        cash_score = 9.0
+    elif 150_000 < cash <= 200_000:
+        cash_score = 8.0
     else:
-        cash = 3.0
+        # Deduct 1 point for each completed additional 50,000 above 2,00,000 starting from 8 points
+        excess = cash - 200_000
+        steps = int(excess // 50_000)
+        cash_score = float(max(0, 8 - steps))
         
-    # 3. Diversification Points (Max 20 pts) - FIXED EXPLOIT:
+    cash_pts = round(max(0.0, min(10.0, cash_score)), 2)
+        
+    # ==========================================
+    # 3. Diversification Points (Max 20 Points)
+    # ==========================================
     holdings = p["holdings"]
-    trade_count = t["trades"] if "trades" in t.keys() else 0
     total_market_value = p["market"]
-    capital_deployed_pct = (total_market_value / p["cap"]) * 100 if p["cap"] > 0 else 0
     
-    # If no trades, no holdings, or less than 30% capital deployed, diversification points = 0
-    if trade_count == 0 or not holdings or capital_deployed_pct < 40.0:
-        div = 0.0
-    else:
+    div = 0.0
+    if holdings and total_market_value > 0:
         sector_totals = {}
         for h in holdings:
             sec = h["industry"]
             val_h = h["price"] * h["qty"]
             sector_totals[sec] = sector_totals.get(sec, 0.0) + val_h
             
-        max_sector_share = max(sector_totals.values()) / total_market_value if total_market_value > 0 else 0.0
-        share_pct = max_sector_share * 100.0
+        sector_allocations = {sec: val / total_market_value for sec, val in sector_totals.items()}
         
-        meaningful_sectors = sum(1 for sec_val in sector_totals.values() if (sec_val / total_market_value) >= 0.10)
+        # Determine classification: High, Medium, or Low
+        # High: Every sector allocation is <= 30% (0.30) and at least 3 sectors are meaningful (> 0 and <= 0.30)
+        meaningful_sectors = sum(1 for alloc in sector_allocations.values() if 0 < alloc <= 0.30)
+        all_within_30 = all(alloc <= 0.30 for alloc in sector_allocations.values())
         
-        if share_pct <= 30.0 and meaningful_sectors >= 3:
-            div = 18.5  # Top diversification score only with genuine multi-sector exposure
-        elif share_pct <= 60.0:
-            div = 13.0
+        if all_within_30 and meaningful_sectors >= 3:
+            classification = "high"
+        elif sum(1 for alloc in sector_allocations.values() if alloc > 0.30) >= 2:
+            classification = "medium"
         else:
-            div = 6.0
+            classification = "low"
             
-    # 4. Beta Points (Max 10 pts replacing Risk):
-    if holdings:
-        total_holding_val = sum(h["price"] * h["qty"] for h in holdings)
-        if total_holding_val > 0:
-            betas = {row["symbol"]: row["beta"] for row in c.execute("SELECT symbol, beta FROM companies").fetchall()}
-            weighted_beta = sum((h["price"] * h["qty"] / total_holding_val) * betas.get(h["symbol"], 1.0) for h in holdings)
-        else:
-            weighted_beta = 1.0
-    else:
-        weighted_beta = 1.0
+        div_table = {
+            "below_3l": {"high": 0.0, "medium": 0.0, "low": 0.0},
+            "3l_to_5l": {"high": 10.0, "medium": 8.0, "low": 5.0},
+            "5l_to_7l": {"high": 14.0, "medium": 10.0, "low": 7.0},
+            "above_7l": {"high": 18.0, "medium": 13.0, "low": 9.0}
+        }
+        div = float(div_table[tier][classification])
         
-    if weighted_beta > 1.3 and portfolio_ret > 0:
-        beta_score = 10.0
-    elif 1.0 <= weighted_beta <= 1.25:
-        beta_score = 8.0
-    elif weighted_beta == 1.0:
-        beta_score = 6.0
-    elif 0.7 < weighted_beta < 1.0:
-        beta_score = 5.0
+    # ==========================================
+    # 4. Beta Points (Max 10 Points)
+    # ==========================================
+    # Calculate market index return as average return across all companies
+    comp_rows = c.execute("SELECT start_price, price FROM companies").fetchall()
+    if comp_rows:
+        market_returns = [(row["price"] / row["start_price"] - 1) * 100 for row in comp_rows if row["start_price"] > 0]
+        market_index_ret = sum(market_returns) / len(market_returns) if market_returns else 0.0
     else:
-        beta_score = 3.0
+        market_index_ret = 0.0
+        
+    # Calculate Beta safely handling zero or near-zero index returns
+    if abs(market_index_ret) < 1e-5:
+        portfolio_beta = 1.0
+    else:
+        portfolio_beta = portfolio_ret / market_index_ret
+        
+    beta_table = {
+        "below_3l": {"high": 0.0, "mid": 0.0, "low": 0.0},
+        "3l_to_5l": {"high": 7.0, "mid": 5.0, "low": 3.0},
+        "5l_to_7l": {"high": 8.0, "mid": 6.0, "low": 4.0},
+        "above_7l": {"high": 9.0, "mid": 7.0, "low": 5.0}
+    }
+    
+    if portfolio_beta > 1.3:
+        b_cat = "high"
+    elif 0.8 <= portfolio_beta <= 1.3:
+        b_cat = "mid"
+    else:
+        b_cat = "low"
+        
+    beta_score = float(beta_table[tier][b_cat])
         
     parts = dict(
         returns=ret,
-        cash=cash,
+        cash=cash_pts,
         diversification=div,
         beta=beta_score
     )
     
+    total_score = round(sum(parts.values()), 2)
+    
     return dict(
-        total=round(sum(parts.values()), 2),
+        total=total_score,
         parts=parts,
         value=round(p["value"], 2),
         ret=round(p["ret"], 2)
