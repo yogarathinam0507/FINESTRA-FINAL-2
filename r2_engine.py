@@ -115,52 +115,44 @@ def release_due(c, rnd, rel):
         if rel >= r["ord"] * step: release_news(c, r, rel); ch = True
     return ch
 
-# ---------------- private news generator (Opposition & Insider Rumors) ----------------
+# ---------------- private news generator (Tailored per Team) ----------------
 def generate_private_news(c, rnd):
     """Generates 2 unique strategic private news items per team during discussion time:
-       - Item 1: Rumor/hint targeting an opposition team's company.
-       - Item 2: Insider/market intelligence hint regarding another rival firm or own firm asset."""
+       - Item 1: Rumor/hint targeting an opposition team's company holding.
+       - Item 2: Insider/market intelligence hint regarding their own asset or another asset."""
     teams = [r["team_id"] for r in c.execute("SELECT team_id FROM r2_accounts").fetchall()]
     comps_list = comps(c)
     private_store = {}
     
     for team in teams:
-        other_teams = [t for t in teams if t != team]
         items = []
+        my_stakes = [row["symbol"] for row in c.execute("SELECT symbol FROM r2_stakes WHERE team_id=? AND bp>0", (team,)).fetchall()]
+        other_teams = [t for t in teams if t != team]
+        opp_stakes_map = {}
+        for ot in other_teams:
+            stks = [row["symbol"] for row in c.execute("SELECT symbol FROM r2_stakes WHERE team_id=? AND bp>0", (ot,)).fetchall()]
+            if stks:
+                opp_stakes_map[ot] = stks
         
-        # Pick an opposition company if available
-        opp_sym = None
-        opp_team_name = "a rival competitor"
-        if other_teams:
-            opp_t = random.choice(other_teams)
-            opp_stakes = c.execute("SELECT symbol FROM r2_stakes WHERE team_id=? AND bp>0", (opp_t,)).fetchall()
-            if opp_stakes:
-                opp_sym = random.choice(opp_stakes)["symbol"]
-                opp_team_name = tname(c, opp_t)
-        
-        if not opp_sym and comps_list:
-            opp_sym = random.choice(comps_list)["symbol"]
+        # Item 1: Opposition asset rumor
+        target_opp_sym = None
+        target_opp_team = "a rival competitor"
+        if opp_stakes_map:
+            rand_ot = random.choice(list(opp_stakes_map.keys()))
+            target_opp_sym = random.choice(opp_stakes_map[rand_ot])
+            target_opp_team = tname(c, rand_ot)
+        if not target_opp_sym and comps_list:
+            target_opp_sym = random.choice(comps_list)["symbol"]
             
-        co_opp = c.execute("SELECT name, industry FROM r2_companies WHERE symbol=?", (opp_sym,)).fetchone() if opp_sym else None
-        opp_name = co_opp["name"] if co_opp else "Target Firm"
+        co_opp = c.execute("SELECT name FROM r2_companies WHERE symbol=?", (target_opp_sym,)).fetchone()
+        opp_name = co_opp["name"] if co_opp else target_opp_sym
+        items.append(f"CONFIDENTIAL TIP: {target_opp_team}'s holding '{opp_name}' is rumored to face supply chain friction in this cycle.")
         
-        # Item 1: Opposition tactical rumor
-        rumors_opp = [
-            f"CONFIDENTIAL TIP: {opp_team_name}'s key asset '{opp_name}' is rumored to face supply chain bottlenecks in this round.",
-            f"INSIDER WHISPER: Competitors holding '{opp_name}' are quietly looking to offload their position due to hidden liabilities.",
-            f"STRATEGIC RADAR: Market chatter suggests '{opp_name}' held by {opp_team_name} is bracing for an unexpected sector correction."
-        ]
-        items.append(random.choice(rumors_opp))
-        
-        # Item 2: General market/insider intelligence
-        random_comp = random.choice(comps_list) if comps_list else None
-        comp_name = random_comp["name"] if random_comp else "Key Industry"
-        rumors_market = [
-            f"PROPRIETARY BRIEF: Heavy accumulation is expected in '{comp_name}' before the upcoming auction window closes.",
-            f"DISCREET INTELLIGENCE: Unnamed institutional players are bidding up stakes in the {random_comp['industry'] if random_comp else 'tech'} sector.",
-            f"RUMOR MILL: Valuation markup anticipated for '{comp_name}' as hidden demand peaks during the current cycle."
-        ]
-        items.append(random.choice(rumors_market))
+        # Item 2: Own asset or general market insider intelligence
+        target_own_sym = my_stakes[0] if my_stakes else (comps_list[0]["symbol"] if comps_list else target_opp_sym)
+        co_own = c.execute("SELECT name FROM r2_companies WHERE symbol=?", (target_own_sym,)).fetchone()
+        own_name = co_own["name"] if co_own else target_own_sym
+        items.append(f"INSIDER BRIEF: Proprietary audit suggests your asset '{own_name}' is poised for a valuation markup due to surging institutional demand.")
         
         private_store[team] = items
     return private_store
@@ -510,7 +502,7 @@ def state_for(c, role, team_id, now):
         teams={r["team_id"]: tname(c, r["team_id"]) for r in c.execute("SELECT team_id FROM r2_accounts")}, news=news_view(c, role == "organizer"),
         newsletter_on=D.get(c, "newsletter_on") == "1", lots_left=c.execute("SELECT COUNT(*) FROM r2_auctions WHERE status='queued'").fetchone()[0])
     
-    # Generate and assign private news strictly during discussion phase
+    # Generate and assign tailored private news strictly during discussion phase
     st_cur = D.get(c, "stage_cur")
     priv_map = {}
     if rnd >= 1 and st_cur in ("a1", "a2", "a3"):
